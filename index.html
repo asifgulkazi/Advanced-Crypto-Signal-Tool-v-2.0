@@ -13,8 +13,8 @@
         body { font-family: 'Inter', sans-serif; background-color: #111827; color: #e5e7eb; }
         .signal-card { background-color: #1f2937; border: 1px solid #374151; border-radius: 1rem; }
         .tag { display: inline-block; padding: 0.25rem 0.75rem; border-radius: 9999px; font-weight: 600; font-size: 0.875rem; }
-        .tag-long { background-color: #10b981; color: #ffffff; }
-        .tag-short { background-color: #f43f5e; color: #ffffff; }
+        .tag-long, .tag-strong-buy { background-color: #10b981; color: #ffffff; }
+        .tag-short, .tag-strong-sell { background-color: #f43f5e; color: #ffffff; }
         .tag-neutral { background-color: #6b7280; color: #ffffff; }
         .tab { padding: 0.5rem 1rem; border-radius: 0.5rem; font-weight: 500; cursor: pointer; transition: background-color 0.2s; border: 1px solid transparent; }
         .tab.active { background-color: #3b82f6; color: white; border-color: #3b82f6; }
@@ -28,13 +28,16 @@
         .analysis-section h4 { font-weight: 600; color: #9ca3af; margin-bottom: 0.5rem; border-bottom: 1px solid #374151; padding-bottom: 0.25rem; }
         .analysis-section p { font-size: 0.875rem; color: #d1d5db; }
         .justification-box { background-color: rgba(55, 65, 81, 0.5); border-left: 4px solid #3b82f6; padding: 0.75rem 1rem; border-radius: 0.5rem; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.75rem; }
-        .historical-table th, .historical-table td { padding: 0.5rem; text-align: left; font-size: 0.875rem; }
-        .historical-table th { color: #9ca3af; }
-        .historical-table tr:nth-child(even) { background-color: rgba(55, 65, 81, 0.3); }
+        
+        /* Compact Table Styles */
+        .compact-table th, .compact-table td { padding: 0.35rem 0.5rem; text-align: left; font-size: 0.75rem; border-bottom: 1px solid #374151; }
+        .compact-table th { color: #9ca3af; background-color: #374151; }
+        .compact-table tr:last-child td { border-bottom: none; }
+        .compact-table tbody tr:hover { background-color: #374151; }
     </style>
 </head>
 <body class="p-4 sm:p-6 md:p-8">
-    <div class="max-w-6xl mx-auto">
+    <div class="max-w-7xl mx-auto">
         <header class="text-center mb-4">
             <h1 class="text-3xl sm:text-4xl font-bold text-white">Advanced Crypto Signal Tool</h1>
             <p id="analysis-header" class="text-gray-400 mt-2">Real-Time Analysis from Binance</p>
@@ -74,9 +77,12 @@
             </button>
         </div>
 
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div id="signal-container" class="signal-card p-6 sm:p-8 lg:col-span-2"></div>
-            <div id="history-container" class="signal-card p-6 sm:p-8"></div>
+        <div id="signal-container" class="signal-card p-6 sm:p-8 mb-6"></div>
+        
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div id="history-container" class="signal-card py-4 sm:py-6"></div>
+            <div id="top-coins-container" class="signal-card py-4 sm:py-6"></div>
+            <div id="top-movers-container" class="signal-card py-4 sm:py-6"></div>
         </div>
 
         <div class="bg-gray-800/50 p-4 mt-8 rounded-lg">
@@ -92,6 +98,8 @@
         const refreshButton = document.getElementById('refresh-button');
         const signalContainer = document.getElementById('signal-container');
         const historyContainer = document.getElementById('history-container');
+        const topCoinsContainer = document.getElementById('top-coins-container');
+        const topMoversContainer = document.getElementById('top-movers-container');
         const timeframeTabsContainer = document.getElementById('timeframe-tabs');
         const tradeTypeTabsContainer = document.getElementById('trade-type-tabs');
         const spotSubTypeTabsContainer = document.getElementById('spot-sub-type-tabs');
@@ -125,7 +133,6 @@
                 const highPrices = klines.map(k => parseFloat(k[2]));
                 const lowPrices = klines.map(k => parseFloat(k[3]));
                 
-                // *** FIX: Use previous candle for Pivot Points and High/Low/Avg stats ***
                 const previousCandle = klines[klines.length - 2];
                 const prevHigh = parseFloat(previousCandle[2]);
                 const prevLow = parseFloat(previousCandle[3]);
@@ -165,8 +172,8 @@
 
                 const signalData = {
                     pair, tradeType: tradeSignal, trendDirection, currentPrice,
-                    support: pivots.s1, // Using Pivot Support 1
-                    resistance: pivots.r1, // Using Pivot Resistance 1
+                    support: pivots.s1,
+                    resistance: pivots.r1,
                     rsi, macd, volatilityLabel,
                     tp1, tp2, tp3, stopLoss, riskRewardRatio, slPercent, tp1Percent, tp2Percent, tp3Percent,
                     justification,
@@ -179,7 +186,8 @@
                 };
 
                 updateUI(signalData);
-                updateHistoryTable(klines);
+                updateHistoryTable(klines, pair);
+                updateMarketAnalysisTables(interval, tradeType);
                 startPriceStream(pair);
 
             } catch (error) {
@@ -192,15 +200,12 @@
             const P = (high + low + close) / 3;
             const R1 = (2 * P) - low;
             const S1 = (2 * P) - high;
-            const R2 = P + (high - low);
-            const S2 = P - (high - low);
-            return { p: P, r1: R1, s1: S1, r2: R2, s2: S2 };
+            return { r1: R1, s1: S1 };
         }
         
         function calculateLevels(price, signal, tradeType, spotType, highs, lows) {
             let tp1Percent, tp2Percent, tp3Percent, slPercent;
             const type = tradeType === 'spot' ? spotType : 'futures';
-
             switch(type) {
                 case 'scalp':      tp1Percent=0.005; tp2Percent=0.008; tp3Percent=0.01;  slPercent=0.003; break;
                 case 'day':        tp1Percent=0.015; tp2Percent=0.025; tp3Percent=0.035; slPercent=0.008; break;
@@ -209,7 +214,6 @@
                 case 'futures':    tp1Percent=0.02;  tp2Percent=0.04;  tp3Percent=0.06;  slPercent=0.01;  break;
                 default:           tp1Percent=0.015; tp2Percent=0.025; tp3Percent=0.035; slPercent=0.008; break;
             }
-            
             let tp1, tp2, tp3, stopLoss, riskRewardRatio = 0;
             if (signal === 'Long (Buy)') {
                 tp1 = price * (1 + tp1Percent);
@@ -340,10 +344,14 @@
             if (priceSocket) priceSocket.close();
             signalContainer.innerHTML = `<div class="flex justify-center items-center p-10"><div class="loader"></div></div>`;
             historyContainer.innerHTML = `<div class="flex justify-center items-center p-10"><div class="loader"></div></div>`;
+            topCoinsContainer.innerHTML = `<div class="flex justify-center items-center p-10"><div class="loader"></div></div>`;
+            topMoversContainer.innerHTML = `<div class="flex justify-center items-center p-10"><div class="loader"></div></div>`;
         }
         function showError(message) { 
             signalContainer.innerHTML = `<div class="text-center p-10 text-red-400"><i class="fas fa-exclamation-circle fa-2x mb-3"></i><h3 class="font-bold text-lg">Error</h3><p>${message}</p></div>`;
             historyContainer.innerHTML = `<div class="text-center p-10 text-red-400"><p>Could not load history.</p></div>`;
+            topCoinsContainer.innerHTML = `<div class="text-center p-10 text-red-400"><p>Could not load market data.</p></div>`;
+            topMoversContainer.innerHTML = `<div class="text-center p-10 text-red-400"><p>Could not load market data.</p></div>`;
         }
         function handleFetch() {
             const pair = pairInput.value;
@@ -410,7 +418,6 @@
                     <p id="current-price-value" data-price="${data.currentPrice}" class="text-3xl font-bold text-white">$${data.currentPrice.toFixed(pricePrecision)}</p>
                 </div>
                 
-                <!-- New Stats Boxes -->
                 <div class="grid grid-cols-3 gap-4 text-center mb-4">
                     <div class="bg-gray-700/50 p-3 rounded-lg">
                         <p class="text-xs text-gray-400">High (Prev ${data.interval})</p>
@@ -441,7 +448,6 @@
                         <h3 class="text-xl font-bold text-white"><i class="fas fa-chart-bar mr-2"></i>Technical Analysis</h3>
                         <div><h4>Support & Resistance</h4><p>Support: $${data.support.toFixed(pricePrecision)} | Resistance: $${data.resistance.toFixed(pricePrecision)}</p></div>
                         <div><h4>Indicators</h4><p>RSI: ${data.rsi.toFixed(2)} | MACD Hist: ${data.macd.histogram} | Volatility: ${data.volatilityLabel}</p></div>
-                        <div><h4>Chart Patterns</h4><p>${data.chartPatterns}</p></div>
                     </div>
                     <div class="space-y-4 analysis-section">
                         <h3 class="text-xl font-bold text-white"><i class="fas fa-globe-americas mr-2"></i>Fundamental Analysis</h3>
@@ -452,21 +458,95 @@
                 </div>`;
         }
 
-        function updateHistoryTable(klines) {
+        function updateHistoryTable(klines, pair) {
             const recentKlines = klines.slice(-20).reverse();
             const pricePrecision = parseFloat(recentKlines[0][4]) > 10 ? 2 : 5;
-            let tableHTML = `<h3 class="text-xl font-bold text-white mb-4"><i class="fas fa-history mr-2"></i>Price History</h3>
-                             <div class="overflow-y-auto max-h-[40rem]">
-                                <table class="w-full historical-table">
-                                    <thead><tr><th>Time</th><th>Price</th></tr></thead>
+            let tableHTML = `<h3 class="text-xl font-bold text-white mb-4 px-4 sm:px-0"><i class="fas fa-history mr-2"></i>${pair.replace('USDT','')} History</h3>
+                             <div>
+                                <table class="w-full compact-table">
+                                    <thead><tr><th>Date</th><th>Time</th><th>Price</th><th>Change</th></tr></thead>
                                     <tbody>`;
-            recentKlines.forEach(kline => {
+            for (let i = 0; i < recentKlines.length - 1; i++) {
+                const kline = recentKlines[i];
+                const prevKline = recentKlines[i+1];
+                const date = new Date(kline[0]).toLocaleDateString([], { month: 'short', day: 'numeric' });
                 const time = new Date(kline[0]).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
                 const price = parseFloat(kline[4]).toFixed(pricePrecision);
-                tableHTML += `<tr><td>${time}</td><td>$${price}</td></tr>`;
-            });
+                const prevPrice = parseFloat(prevKline[4]);
+                const change = ((price - prevPrice) / prevPrice * 100).toFixed(2);
+                const changeColor = change >= 0 ? 'text-green-400' : 'text-red-400';
+                tableHTML += `<tr><td>${date}</td><td>${time}</td><td>$${price}</td><td class="${changeColor}">${change}%</td></tr>`;
+            }
             tableHTML += `</tbody></table></div>`;
             historyContainer.innerHTML = tableHTML;
+        }
+
+        async function updateMarketAnalysisTables(interval, tradeType) {
+            const topCoins = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'BNBUSDT', 'DOGEUSDT', 'ADAUSDT', 'AVAXUSDT', 'SHIBUSDT', 'DOTUSDT', 'LINKUSDT', 'MATICUSDT', 'ICPUSDT', 'BCHUSDT', 'LTCUSDT', 'NEARUSDT', 'UNIUSDT', 'XLMUSDT', 'INJUSDT', 'TIAUSDT'];
+            
+            let topCoinsHtml = `<h3 class="text-xl font-bold text-white mb-4 px-4 sm:px-0"><i class="fas fa-star mr-2"></i>Top Coins Analysis</h3>
+                                <div><table class="w-full compact-table"><thead><tr><th>Coin</th><th>Price</th><th>Signal</th></tr></thead><tbody>`;
+            let coinResultsHtml = '';
+            for (const coin of topCoins) {
+                try {
+                    const klinesUrl = `https://api.binance.com/api/v3/klines?symbol=${coin}&interval=${interval}&limit=50`;
+                    const tickerUrl = `https://api.binance.com/api/v3/ticker/price?symbol=${coin}`;
+                    const [klinesRes, tickerRes] = await Promise.all([fetch(klinesUrl), fetch(tickerUrl)]);
+                    
+                    if (!klinesRes.ok || !tickerRes.ok) {
+                        coinResultsHtml += `<tr><td>${coin.replace('USDT','')}</td><td colspan="2">Error</td></tr>`;
+                        continue;
+                    }
+                    
+                    const klines = await klinesRes.json();
+                    const ticker = await tickerRes.json();
+                    const price = parseFloat(ticker.price);
+                    const closePrices = klines.map(k => parseFloat(k[4]));
+                    const rsi = calculateRSI(closePrices);
+                    const sma9 = calculateSMA(closePrices, 9);
+                    const sma21 = calculateSMA(closePrices, 21);
+
+                    let signal = `<span class="tag tag-neutral">Neutral</span>`;
+                    if (rsi < 30 && sma9 > sma21) signal = `<span class="tag tag-strong-buy">Strong Buy</span>`;
+                    else if (rsi > 70 && sma9 < sma21) signal = `<span class="tag tag-strong-sell">Strong Sell</span>`;
+                    else if (sma9 > sma21) signal = `<span class="tag tag-long">Buy</span>`;
+                    else if (sma9 < sma21) signal = `<span class="tag tag-short">Sell</span>`;
+                    
+                    if (tradeType === 'spot' && (signal.includes('Sell') || signal.includes('short'))) {
+                        signal = `<span class="tag tag-neutral">Neutral</span>`;
+                    }
+
+                    const pricePrecision = price > 10 ? 2 : 4;
+                    coinResultsHtml += `<tr><td>${coin.replace('USDT','')}</td><td>$${price.toFixed(pricePrecision)}</td><td>${signal}</td></tr>`;
+                } catch (e) {
+                    coinResultsHtml += `<tr><td>${coin.replace('USDT','')}</td><td colspan="2">Failed</td></tr>`;
+                }
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
+            topCoinsHtml += coinResultsHtml + `</tbody></table></div>`;
+            topCoinsContainer.innerHTML = topCoinsHtml;
+
+            let topMoversHtml = `<h3 class="text-xl font-bold text-white mb-4 px-4 sm:px-0"><i class="fas fa-rocket mr-2"></i>Top Movers (24h)</h3>
+                                 <div><table class="w-full compact-table"><thead><tr><th>Coin</th><th>Price</th><th>Change</th></tr></thead><tbody>`;
+            const moversRes = await fetch('https://api.binance.com/api/v3/ticker/24hr');
+            if (moversRes.ok) {
+                const moversData = await moversRes.json();
+                const usdtMovers = moversData.filter(m => m.symbol.endsWith('USDT') && !m.symbol.includes('UP') && !m.symbol.includes('DOWN') && parseFloat(m.volume) > 100000);
+                usdtMovers.sort((a, b) => parseFloat(b.priceChangePercent) - parseFloat(a.priceChangePercent));
+                
+                for(let i=0; i < 20; i++) {
+                    const mover = usdtMovers[i];
+                    const price = parseFloat(mover.lastPrice);
+                    const change = parseFloat(mover.priceChangePercent);
+                    const changeColor = change >= 0 ? 'text-green-400' : 'text-red-400';
+                    const pricePrecision = price > 10 ? 2 : 4;
+                    topMoversHtml += `<tr><td>${mover.symbol.replace('USDT','')}</td><td>$${price.toFixed(pricePrecision)}</td><td class="${changeColor}">${change.toFixed(2)}%</td></tr>`;
+                }
+            } else {
+                topMoversHtml += `<tr><td colspan="3">Error loading data</td></tr>`;
+            }
+            topMoversHtml += `</tbody></table></div>`;
+            topMoversContainer.innerHTML = topMoversHtml;
         }
     </script>
 </body>
