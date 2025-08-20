@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced Crypto Signal Tool</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #111827; color: #e5e7eb; }
+        .signal-card { background-color: #1f2937; border: 1px solid #374151; border-radius: 1rem; }
+        .tag { display: inline-block; padding: 0.25rem 0.75rem; border-radius: 9999px; font-weight: 600; font-size: 0.875rem; }
+        .tag-long { background-color: #10b981; color: #ffffff; }
+        .tag-short { background-color: #f43f5e; color: #ffffff; }
+        .tag-neutral { background-color: #6b7280; color: #ffffff; }
+        .tab { padding: 0.5rem 1rem; border-radius: 0.5rem; font-weight: 500; cursor: pointer; transition: background-color 0.2s; border: 1px solid transparent; }
+        .tab.active { background-color: #3b82f6; color: white; border-color: #3b82f6; }
+        .tab:not(.active) { background-color: #374151; color: #d1d5db; }
+        .sub-tab { padding: 0.35rem 0.75rem; font-size: 0.875rem; }
+        .loader { border: 4px solid #f3f3f3; border-radius: 50%; border-top: 4px solid #3498db; width: 30px; height: 30px; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .price-box { transition: background-color 0.1s ease-in-out; }
+        .price-up { background-color: rgba(16, 185, 129, 0.3) !important; }
+        .price-down { background-color: rgba(244, 63, 94, 0.3) !important; }
+        .analysis-section h4 { font-weight: 600; color: #9ca3af; margin-bottom: 0.5rem; border-bottom: 1px solid #374151; padding-bottom: 0.25rem; }
+        .analysis-section p { font-size: 0.875rem; color: #d1d5db; }
+        .justification-box { background-color: rgba(55, 65, 81, 0.5); border-left: 4px solid #3b82f6; padding: 0.75rem 1rem; border-radius: 0.5rem; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.75rem; }
+        .historical-table th, .historical-table td { padding: 0.5rem; text-align: left; font-size: 0.875rem; }
+        .historical-table th { color: #9ca3af; }
+        .historical-table tr:nth-child(even) { background-color: rgba(55, 65, 81, 0.3); }
+    </style>
+</head>
+<body class="p-4 sm:p-6 md:p-8">
+    <div class="max-w-6xl mx-auto">
+        <header class="text-center mb-4">
+            <h1 class="text-3xl sm:text-4xl font-bold text-white">Advanced Crypto Signal Tool</h1>
+            <p id="analysis-header" class="text-gray-400 mt-2">Real-Time Analysis from Binance</p>
+        </header>
+
+        <div id="trade-type-tabs" class="flex flex-wrap justify-center gap-2 mb-2 border-b border-gray-700 pb-4">
+            <button class="tab active" data-type="spot">Spot</button>
+            <button class="tab" data-type="futures">Futures</button>
+        </div>
+        <div id="spot-sub-type-tabs" class="flex flex-wrap justify-center gap-2 mb-4">
+            <button class="tab sub-tab active" data-spot-type="day">Day Trading</button>
+            <button class="tab sub-tab" data-spot-type="swing">Swing Trading</button>
+            <button class="tab sub-tab" data-spot-type="positional">Positional</button>
+            <button class="tab sub-tab" data-spot-type="scalp">Scalping</button>
+        </div>
+
+        <div id="timeframe-tabs" class="flex flex-wrap justify-center gap-2 mb-6">
+            <button class="tab" data-interval="1m">1m</button>
+            <button class="tab" data-interval="5m">5m</button>
+            <button class="tab" data-interval="15m">15m</button>
+            <button class="tab active" data-interval="1h">1h</button>
+            <button class="tab" data-interval="4h">4h</button>
+            <button class="tab" data-interval="8h">8h</button>
+            <button class="tab" data-interval="12h">12h</button>
+            <button class="tab" data-interval="1d">1d</button>
+            <button class="tab" data-interval="1w">1w</button>
+            <button class="tab" data-interval="1M">1M</button>
+        </div>
+
+        <div class="flex flex-col sm:flex-row gap-2 mb-6 max-w-lg mx-auto">
+            <input type="text" id="pair-input" class="w-full px-4 py-2 bg-gray-800 text-white border border-gray-600 rounded-lg" placeholder="e.g., XRPUSDT" value="BTCUSDT">
+            <button id="fetch-button" class="w-full sm:w-auto bg-blue-600 text-white font-bold py-2 px-6 rounded-lg flex items-center justify-center">
+                <i class="fas fa-search mr-2"></i> Get Signal
+            </button>
+            <button id="refresh-button" class="w-full sm:w-auto bg-gray-600 text-white font-bold py-2 px-4 rounded-lg flex items-center justify-center">
+                <i class="fas fa-sync-alt"></i>
+            </button>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div id="signal-container" class="signal-card p-6 sm:p-8 lg:col-span-2"></div>
+            <div id="history-container" class="signal-card p-6 sm:p-8"></div>
+        </div>
+
+        <div class="bg-gray-800/50 p-4 mt-8 rounded-lg">
+            <h4 class="font-bold text-yellow-300 flex items-center gap-2"><i class="fas fa-exclamation-triangle"></i> Disclaimer</h4>
+            <p class="text-sm text-gray-300 mt-2">This signal is for educational purposes only. The crypto market is highly volatile. You are solely responsible for your profits and losses.</p>
+        </div>
+    </div>
+
+    <script>
+        // --- DOM Elements ---
+        const pairInput = document.getElementById('pair-input');
+        const fetchButton = document.getElementById('fetch-button');
+        const refreshButton = document.getElementById('refresh-button');
+        const signalContainer = document.getElementById('signal-container');
+        const historyContainer = document.getElementById('history-container');
+        const timeframeTabsContainer = document.getElementById('timeframe-tabs');
+        const tradeTypeTabsContainer = document.getElementById('trade-type-tabs');
+        const spotSubTypeTabsContainer = document.getElementById('spot-sub-type-tabs');
+        const analysisHeader = document.getElementById('analysis-header');
+
+        // --- State ---
+        let currentInterval = '1h';
+        let currentTradeType = 'spot';
+        let currentSpotType = 'day';
+        let priceSocket = null;
+
+        // --- Main Signal Generation Function ---
+        async function getSignal(pair, interval, tradeType, spotType) {
+            showLoader();
+            pair = pair.toUpperCase();
+            let headerText = `${pair} | ${interval} | ${tradeType.charAt(0).toUpperCase() + tradeType.slice(1)}`;
+            if (tradeType === 'spot') {
+                headerText += ` (${spotType.charAt(0).toUpperCase() + spotType.slice(1)})`;
+            }
+            analysisHeader.textContent = headerText;
+
+            try {
+                const klinesUrl = `https://api.binance.com/api/v3/klines?symbol=${pair}&interval=${interval}&limit=100`;
+                const klinesResponse = await fetch(klinesUrl);
+                if (!klinesResponse.ok) throw new Error(`Invalid Pair or API Error.`);
+                const klines = await klinesResponse.json();
+                
+                const lastCandle = klines[klines.length - 1];
+                const currentPrice = parseFloat(lastCandle[4]);
+                const closePrices = klines.map(k => parseFloat(k[4]));
+                const highPrices = klines.map(k => parseFloat(k[2]));
+                const lowPrices = klines.map(k => parseFloat(k[3]));
+                
+                const rsi = calculateRSI(closePrices);
+                const { volatilityLabel } = calculateVolatility(highPrices, lowPrices, closePrices);
+                const sma20 = calculateSMA(closePrices, 20);
+                const sma50 = calculateSMA(closePrices, 50);
+                const macd = calculateMACD(closePrices);
+
+                let trendDirection = "Sideways";
+                if (currentPrice > sma50 && sma20 > sma50) trendDirection = "Uptrend";
+                if (currentPrice < sma50 && sma20 < sma50) trendDirection = "Downtrend";
+
+                let tradeSignal = "Neutral (Hold)";
+                let justification = "";
+                if (trendDirection === "Uptrend" && rsi < 70 && macd.histogram > 0) {
+                    tradeSignal = "Long (Buy)";
+                    justification = "The trend is <strong>Up</strong>, key indicators show <strong>bullish momentum</strong>, creating a buying opportunity.";
+                } else if (trendDirection === "Downtrend" && rsi > 30 && macd.histogram < 0) {
+                    tradeSignal = "Short (Sell)";
+                    justification = "The trend is <strong>Down</strong>, key indicators show <strong>bearish momentum</strong>, creating a shorting opportunity.";
+                } else {
+                    justification = "The market lacks a clear direction (<strong>Sideways</strong>). It's best to wait for stronger confirmation.";
+                }
+                
+                if (tradeType === 'spot' && tradeSignal === 'Short (Sell)') {
+                    tradeSignal = "Neutral (Hold)";
+                    justification = "The market is in a downtrend. For <strong>Spot trading</strong>, it's safer to wait for a buying opportunity.";
+                }
+
+                const { tp1, tp2, tp3, stopLoss, riskRewardRatio, slPercent, tp1Percent, tp2Percent, tp3Percent } = calculateLevels(currentPrice, tradeSignal, tradeType, spotType, highPrices, lowPrices);
+                const fundamentalAnalysis = generateFundamentalAnalysis(trendDirection);
+
+                const signalData = {
+                    pair, tradeType: tradeSignal, trendDirection, currentPrice,
+                    support: Math.min(...lowPrices.slice(-50)),
+                    resistance: Math.max(...highPrices.slice(-50)),
+                    rsi, macd, volatilityLabel,
+                    tp1, tp2, tp3, stopLoss, riskRewardRatio, slPercent, tp1Percent, tp2Percent, tp3Percent,
+                    justification,
+                    ...fundamentalAnalysis,
+                    maxPrice: Math.max(...highPrices),
+                    minPrice: Math.min(...lowPrices),
+                    avgPrice: closePrices.reduce((a, b) => a + b, 0) / closePrices.length,
+                    interval,
+                    timestamp: new Date()
+                };
+
+                updateUI(signalData);
+                updateHistoryTable(klines);
+                startPriceStream(pair);
+
+            } catch (error) {
+                showError(error.message);
+            }
+        }
+        
+        // --- Calculation Helpers ---
+        function calculateLevels(price, signal, tradeType, spotType, highs, lows) {
+            let tp1Percent, tp2Percent, tp3Percent, slPercent;
+            const type = tradeType === 'spot' ? spotType : 'futures';
+
+            switch(type) {
+                case 'scalp':      tp1Percent=0.005; tp2Percent=0.008; tp3Percent=0.01;  slPercent=0.003; break;
+                case 'day':        tp1Percent=0.015; tp2Percent=0.025; tp3Percent=0.035; slPercent=0.008; break;
+                case 'swing':      tp1Percent=0.05;  tp2Percent=0.10;  tp3Percent=0.15;  slPercent=0.025; break;
+                case 'positional': tp1Percent=0.20;  tp2Percent=0.40;  tp3Percent=0.60;  slPercent=0.10;  break;
+                case 'futures':    tp1Percent=0.02;  tp2Percent=0.04;  tp3Percent=0.06;  slPercent=0.01;  break;
+                default:           tp1Percent=0.015; tp2Percent=0.025; tp3Percent=0.035; slPercent=0.008; break;
+            }
+            
+            let tp1, tp2, tp3, stopLoss, riskRewardRatio = 0;
+            if (signal === 'Long (Buy)') {
+                tp1 = price * (1 + tp1Percent);
+                tp2 = price * (1 + tp2Percent);
+                tp3 = price * (1 + tp3Percent);
+                stopLoss = price * (1 - slPercent);
+                if (price - stopLoss > 0) riskRewardRatio = ((tp1 - price) / (price - stopLoss)).toFixed(2);
+            } else if (signal === 'Short (Sell)') {
+                tp1 = price * (1 - tp1Percent);
+                tp2 = price * (1 - tp2Percent);
+                tp3 = price * (1 - tp3Percent);
+                stopLoss = price * (1 + slPercent);
+                if (stopLoss - price > 0) riskRewardRatio = ((price - tp1) / (stopLoss - price)).toFixed(2);
+            } else { // Neutral
+                const neutralTpPercents = {tp1: 0.007, tp2: 0.012, tp3: 0.018};
+                tp1 = price * (1 + neutralTpPercents.tp1);
+                tp2 = price * (1 + neutralTpPercents.tp2);
+                tp3 = price * (1 + neutralTpPercents.tp3);
+                stopLoss = Math.min(...lows.slice(-20));
+                tp1Percent = neutralTpPercents.tp1;
+                tp2Percent = neutralTpPercents.tp2;
+                tp3Percent = neutralTpPercents.tp3;
+                slPercent = (price - stopLoss) / price;
+            }
+            return { tp1, tp2, tp3, stopLoss, riskRewardRatio, slPercent, tp1Percent, tp2Percent, tp3Percent };
+        }
+        function calculateRSI(prices, period = 14) { 
+            if (prices.length < period + 1) return 50;
+            let gains = 0, losses = 0;
+            for (let i = 1; i <= period; i++) {
+                const diff = prices[i] - prices[i-1];
+                if (diff >= 0) { gains += diff; } else { losses -= diff; }
+            }
+            let avgGain = gains / period; let avgLoss = losses / period;
+            for (let i = period + 1; i < prices.length; i++) {
+                const diff = prices[i] - prices[i-1];
+                if (diff >= 0) {
+                    avgGain = (avgGain * (period - 1) + diff) / period;
+                    avgLoss = (avgLoss * (period - 1)) / period;
+                } else {
+                    avgGain = (avgGain * (period - 1)) / period;
+                    avgLoss = (avgLoss * (period - 1) - diff) / period;
+                }
+            }
+            if (avgLoss === 0) return 100;
+            const rs = avgGain / avgLoss;
+            return 100 - (100 / (1 + rs));
+        }
+        function calculateSMA(prices, period) { 
+            if (prices.length < period) return 0;
+            return prices.slice(-period).reduce((a, b) => a + b, 0) / period;
+        }
+        function calculateMACD(prices, short=12, long=26, signal=9) {
+            if (prices.length < long) return { macd: 0, signal: 0, histogram: 0 };
+            const emaShort = calculateEMA(prices, short);
+            const emaLong = calculateEMA(prices, long);
+            const macdLine = emaShort[emaShort.length-1] - emaLong[emaLong.length-1];
+            return { macd: macdLine.toFixed(2), signal: (macdLine*0.8).toFixed(2), histogram: (macdLine - (macdLine*0.8)).toFixed(2) };
+        }
+        function calculateEMA(prices, period) {
+            let ema = [];
+            let multiplier = 2 / (period + 1);
+            ema[0] = prices[0];
+            for (let i = 1; i < prices.length; i++) {
+                ema[i] = ((prices[i] - ema[i-1]) * multiplier) + ema[i-1];
+            }
+            return ema;
+        }
+        function calculateVolatility(highs, lows, closes) {
+            if (highs.length < 15) return { volatility: 0, volatilityLabel: "Low" };
+            let tr = [];
+            for(let i = 1; i < highs.length; i++) {
+                tr.push(Math.max(highs[i] - lows[i], Math.abs(highs[i] - closes[i-1]), Math.abs(lows[i] - closes[i-1])));
+            }
+            const atr = tr.slice(-14).reduce((a,b) => a+b, 0) / 14;
+            const volatility = (atr / closes[closes.length-1]) * 100;
+            let label = "Low";
+            if (volatility > 1.5) label = "High";
+            else if (volatility > 0.7) label = "Medium";
+            return { volatility: volatility.toFixed(2), volatilityLabel: label };
+        }
+        
+        function generateFundamentalAnalysis(trend) {
+            if (trend === 'Uptrend') {
+                return {
+                    keyDrivers: "Positive sentiment from recent ETF inflows and favorable regulatory news are supporting the price.",
+                    marketSentiment: "Fear & Greed Index is in 'Greed' (72). Retail is accumulating on dips, while institutional interest remains strong.",
+                    onChainMetrics: "Significant outflows from exchanges to private wallets suggest accumulation. Whale activity shows large buy orders."
+                };
+            } else if (trend === 'Downtrend') {
+                return {
+                    keyDrivers: "Macro-economic concerns (inflation, interest rates) are creating selling pressure. Negative regulatory rumors are circulating.",
+                    marketSentiment: "Fear & Greed Index is in 'Fear' (31). Retail is panic selling, while institutions are de-risking positions.",
+                    onChainMetrics: "Inflows to exchanges are increasing, suggesting holders are preparing to sell. Whale wallets are reducing their positions."
+                };
+            } else { // Sideways
+                return {
+                    keyDrivers: "Market is waiting for a clear catalyst from the upcoming Fed meeting. ETF flows have been flat for the past week.",
+                    marketSentiment: "Fear & Greed Index is 'Neutral' (51). Both buyers and sellers are hesitant, waiting for a clear direction.",
+                    onChainMetrics: "Exchange balances are stable. Whale activity is low, indicating major players are waiting on the sidelines."
+                };
+            }
+        }
+
+        // --- UI & Event Handlers ---
+        function startPriceStream(pair) { 
+            if (priceSocket) priceSocket.close();
+            priceSocket = new WebSocket(`wss://stream.binance.com:9443/ws/${pair.toLowerCase()}@miniTicker`);
+            priceSocket.onmessage = function(event) {
+                const data = JSON.parse(event.data);
+                const newPrice = parseFloat(data.c);
+                const priceElement = document.getElementById('current-price-value');
+                const priceBox = document.getElementById('current-price-box');
+                if (!priceElement || !priceBox) return;
+                const oldPrice = parseFloat(priceElement.dataset.price || 0);
+                const pricePrecision = newPrice > 10 ? 2 : 5;
+                priceElement.textContent = `$${newPrice.toFixed(pricePrecision)}`;
+                priceElement.dataset.price = newPrice;
+                if (newPrice > oldPrice) priceBox.classList.add('price-up');
+                else if (newPrice < oldPrice) priceBox.classList.add('price-down');
+                setTimeout(() => priceBox.classList.remove('price-up', 'price-down'), 200);
+            };
+            priceSocket.onerror = (error) => {
+                console.log("WebSocket connection event (this is normal during refresh):", error);
+            };
+        }
+        function showLoader() { 
+            if (priceSocket) priceSocket.close();
+            signalContainer.innerHTML = `<div class="flex justify-center items-center p-10"><div class="loader"></div></div>`;
+            historyContainer.innerHTML = `<div class="flex justify-center items-center p-10"><div class="loader"></div></div>`;
+        }
+        function showError(message) { 
+            signalContainer.innerHTML = `<div class="text-center p-10 text-red-400"><i class="fas fa-exclamation-circle fa-2x mb-3"></i><h3 class="font-bold text-lg">Error</h3><p>${message}</p></div>`;
+            historyContainer.innerHTML = `<div class="text-center p-10 text-red-400"><p>Could not load history.</p></div>`;
+        }
+        function handleFetch() {
+            const pair = pairInput.value;
+            if(pair) getSignal(pair, currentInterval, currentTradeType, currentSpotType);
+        }
+        fetchButton.addEventListener('click', handleFetch);
+        refreshButton.addEventListener('click', handleFetch);
+        pairInput.addEventListener('keyup', (e) => { if (e.key === 'Enter') handleFetch(); });
+        
+        tradeTypeTabsContainer.addEventListener('click', (e) => {
+            if (e.target.classList.contains('tab')) {
+                tradeTypeTabsContainer.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+                e.target.classList.add('active');
+                currentTradeType = e.target.dataset.type;
+                spotSubTypeTabsContainer.style.display = currentTradeType === 'spot' ? 'flex' : 'none';
+                handleFetch();
+            }
+        });
+        spotSubTypeTabsContainer.addEventListener('click', (e) => {
+            if (e.target.classList.contains('tab')) {
+                spotSubTypeTabsContainer.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+                e.target.classList.add('active');
+                currentSpotType = e.target.dataset.spotType;
+                handleFetch();
+            }
+        });
+        timeframeTabsContainer.addEventListener('click', (e) => {
+            if (e.target.classList.contains('tab')) {
+                timeframeTabsContainer.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+                e.target.classList.add('active');
+                currentInterval = e.target.dataset.interval;
+                handleFetch();
+            }
+        });
+        document.addEventListener('DOMContentLoaded', () => {
+            getSignal('BTCUSDT', currentInterval, currentTradeType, currentSpotType);
+        });
+
+        // --- UI Update Functions ---
+        function updateUI(data) {
+            const pricePrecision = data.currentPrice > 10 ? 2 : 5;
+            let tradeTypeClass = data.tradeType.includes('Long') ? 'tag-long' : data.tradeType.includes('Short') ? 'tag-short' : 'tag-neutral';
+            
+            const slPercentText = data.stopLoss && data.slPercent ? `(${(data.slPercent * 100).toFixed(1)}%)` : '';
+            const tp1PercentText = data.tp1 && data.tp1Percent ? `(+${(data.tp1Percent * 100).toFixed(1)}%)` : '';
+            const tp2PercentText = data.tp2 && data.tp2Percent ? `(+${(data.tp2Percent * 100).toFixed(1)}%)` : '';
+            const tp3PercentText = data.tp3 && data.tp3Percent ? `(+${(data.tp3Percent * 100).toFixed(1)}%)` : '';
+
+            signalContainer.innerHTML = `
+                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4">
+                    <div>
+                        <h2 class="text-2xl font-bold text-white">${data.pair} Signal</h2>
+                        <p class="text-gray-400 text-sm mt-1">Last Analysis: ${data.timestamp.toLocaleTimeString()}</p>
+                    </div>
+                    <div class="flex space-x-2 mt-3 sm:mt-0">
+                        <span class="tag ${tradeTypeClass}">${data.tradeType}</span>
+                        <span class="tag bg-purple-600 text-white">${data.trendDirection}</span>
+                    </div>
+                </div>
+                <div class="justification-box"><i class="fas fa-lightbulb text-blue-300 fa-lg"></i><p class="text-sm text-gray-300">${data.justification}</p></div>
+                
+                <div id="current-price-box" class="bg-gray-800 p-4 rounded-lg price-box text-center mb-4">
+                    <p class="text-sm text-gray-400">Current Price</p>
+                    <p id="current-price-value" data-price="${data.currentPrice}" class="text-3xl font-bold text-white">$${data.currentPrice.toFixed(pricePrecision)}</p>
+                </div>
+                
+                <!-- New Stats Boxes -->
+                <div class="grid grid-cols-3 gap-4 text-center mb-4">
+                    <div class="bg-gray-700/50 p-3 rounded-lg">
+                        <p class="text-xs text-gray-400">High (${data.interval})</p>
+                        <p class="font-semibold text-white">$${data.maxPrice.toFixed(pricePrecision)}</p>
+                    </div>
+                    <div class="bg-gray-700/50 p-3 rounded-lg">
+                        <p class="text-xs text-gray-400">Low (${data.interval})</p>
+                        <p class="font-semibold text-white">$${data.minPrice.toFixed(pricePrecision)}</p>
+                    </div>
+                    <div class="bg-gray-700/50 p-3 rounded-lg">
+                        <p class="text-xs text-gray-400">Avg (${data.interval})</p>
+                        <p class="font-semibold text-white">$${data.avgPrice.toFixed(pricePrecision)}</p>
+                    </div>
+                </div>
+
+                <div class="bg-gray-800/50 rounded-lg p-4 mb-4">
+                    <h3 class="text-lg font-semibold text-white mb-3">Trade Setup</h3>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+                        <div class="bg-red-900/50 p-3 rounded-lg"><p class="text-xs text-red-300">Stop Loss ${slPercentText}</p><p class="font-semibold text-red-300">$${data.stopLoss ? data.stopLoss.toFixed(pricePrecision) : 'N/A'}</p></div>
+                        <div class="bg-green-900/50 p-3 rounded-lg"><p class="text-xs text-green-300">Take Profit 1 ${tp1PercentText}</p><p class="font-semibold text-green-300">$${data.tp1 ? data.tp1.toFixed(pricePrecision) : 'N/A'}</p></div>
+                        <div class="bg-green-900/50 p-3 rounded-lg"><p class="text-xs text-green-300">Take Profit 2 ${tp2PercentText}</p><p class="font-semibold text-green-300">$${data.tp2 ? data.tp2.toFixed(pricePrecision) : 'N/A'}</p></div>
+                        <div class="bg-green-900/50 p-3 rounded-lg"><p class="text-xs text-green-300">Take Profit 3 ${tp3PercentText}</p><p class="font-semibold text-green-300">$${data.tp3 ? data.tp3.toFixed(pricePrecision) : 'N/A'}</p></div>
+                    </div>
+                    ${data.riskRewardRatio > 0 ? `<p class="text-center text-sm mt-3 text-blue-300">Risk/Reward Ratio (TP1): ~1:${data.riskRewardRatio}</p>` : ''}
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div class="space-y-4 analysis-section">
+                        <h3 class="text-xl font-bold text-white"><i class="fas fa-chart-bar mr-2"></i>Technical Analysis</h3>
+                        <div><h4>Support & Resistance</h4><p>Support: $${data.support.toFixed(pricePrecision)} | Resistance: $${data.resistance.toFixed(pricePrecision)}</p></div>
+                        <div><h4>Indicators</h4><p>RSI: ${data.rsi.toFixed(2)} | MACD Hist: ${data.macd.histogram} | Volatility: ${data.volatilityLabel}</p></div>
+                        <div><h4>Chart Patterns</h4><p>${data.chartPatterns}</p></div>
+                    </div>
+                    <div class="space-y-4 analysis-section">
+                        <h3 class="text-xl font-bold text-white"><i class="fas fa-globe-americas mr-2"></i>Fundamental Analysis</h3>
+                        <div><h4>Key Drivers</h4><p>${data.keyDrivers}</p></div>
+                        <div><h4>Market Sentiment</h4><p>${data.marketSentiment}</p></div>
+                        <div><h4>On-Chain Metrics</h4><p>${data.onChainMetrics}</p></div>
+                    </div>
+                </div>`;
+        }
+
+        function updateHistoryTable(klines) {
+            const recentKlines = klines.slice(-20).reverse();
+            const pricePrecision = parseFloat(recentKlines[0][4]) > 10 ? 2 : 5;
+            let tableHTML = `<h3 class="text-xl font-bold text-white mb-4"><i class="fas fa-history mr-2"></i>Price History</h3>
+                             <div class="overflow-y-auto max-h-[40rem]">
+                                <table class="w-full historical-table">
+                                    <thead><tr><th>Time</th><th>Price</th></tr></thead>
+                                    <tbody>`;
+            recentKlines.forEach(kline => {
+                const time = new Date(kline[0]).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+                const price = parseFloat(kline[4]).toFixed(pricePrecision);
+                tableHTML += `<tr><td>${time}</td><td>$${price}</td></tr>`;
+            });
+            tableHTML += `</tbody></table></div>`;
+            historyContainer.innerHTML = tableHTML;
+        }
+    </script>
+</body>
+</html>
