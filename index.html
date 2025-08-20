@@ -45,7 +45,40 @@
         </header>
 
         <!-- Overall Market Picture Dashboard -->
-        <section id="market-overview" class="mb-6 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4"></section>
+        <section id="market-overview" class="mb-6 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+            <!-- Market Cap -->
+            <div class="bg-gray-800 p-3 rounded-lg shadow-lg">
+                <h3 class="text-xs font-medium text-gray-400">Market Cap</h3>
+                <p id="market-cap" class="text-xl font-semibold text-white mt-1">-</p>
+                <p id="market-cap-change" class="text-sm font-medium mt-1">-</p>
+            </div>
+            <!-- 24h Volume -->
+            <div class="bg-gray-800 p-3 rounded-lg shadow-lg">
+                <h3 class="text-xs font-medium text-gray-400">24h Volume</h3>
+                <p id="volume-24h" class="text-xl font-semibold text-white mt-1">-</p>
+            </div>
+            <!-- Advancers vs Decliners -->
+            <div class="bg-gray-800 p-3 rounded-lg shadow-lg">
+                <h3 class="text-xs font-medium text-gray-400">Market Trend (24h)</h3>
+                <div class="mt-1">
+                    <p id="advancers" class="text-md font-semibold text-green-400">- Advancers</p>
+                    <p id="decliners" class="text-md font-semibold text-red-400 mt-1">- Decliners</p>
+                </div>
+            </div>
+            <!-- Fear & Greed Index -->
+            <div class="bg-gray-800 p-3 rounded-lg shadow-lg">
+                <h3 class="text-xs font-medium text-gray-400">Fear & Greed Index</h3>
+                <p id="fear-greed" class="text-xl font-semibold text-white mt-1">-</p>
+                <p id="fear-greed-text" class="text-sm font-medium mt-1">-</p>
+            </div>
+            <!-- BTC Dominance Chart -->
+            <div class="bg-gray-800 p-3 rounded-lg shadow-lg">
+                <h3 class="text-xs font-medium text-gray-400 mb-1">BTC Dominance</h3>
+                <div class="h-20 flex items-center justify-center">
+                    <canvas id="btc-dominance-chart"></canvas>
+                </div>
+            </div>
+        </section>
 
         <div id="trade-type-tabs" class="flex flex-wrap justify-center gap-2 mb-2 border-b border-gray-700 pb-4">
             <button class="tab active" data-type="spot">Spot</button>
@@ -186,7 +219,6 @@
                     justification = "The market is in a downtrend. For <strong>Spot trading</strong>, it's safer to wait for a buying opportunity.";
                 }
                 
-                // NEW: Use the pivot point calculation for SL/TP
                 const { tp1, tp2, tp3, stopLoss, riskRewardRatio, slPercent, tp1Percent, tp2Percent, tp3Percent } = calculateSlAndTpLevels(currentPrice, prevDayHigh, prevDayLow, prevDayClose);
                 const fundamentalAnalysis = generateFundamentalAnalysis(trendDirection);
 
@@ -216,7 +248,6 @@
         }
         
         // --- Calculation Helpers ---
-        // NEW and CORRECTED function for SL/TP levels using Daily Pivots
         function calculateSlAndTpLevels(currentPrice, prevDayHigh, prevDayLow, prevDayClose) {
             const P = (prevDayHigh + prevDayLow + prevDayClose) / 3;
             const S1 = (P * 2) - prevDayHigh;
@@ -229,7 +260,6 @@
             const tp2 = R2;
             const tp3 = R3;
 
-            // Return percentages as decimals for consistency
             const slPercent = (stopLoss - currentPrice) / currentPrice;
             const tp1Percent = (tp1 - currentPrice) / currentPrice;
             const tp2Percent = (tp2 - currentPrice) / currentPrice;
@@ -351,7 +381,6 @@
             topCoinsContainer.innerHTML = `<div class="flex justify-center items-center p-10"><div class="loader"></div></div>`;
             topMoversContainer.innerHTML = `<div class="flex justify-center items-center p-10"><div class="loader"></div></div>`;
             topLosersContainer.innerHTML = `<div class="flex justify-center items-center p-10"><div class="loader"></div></div>`;
-            marketOverview.innerHTML = `<div class="col-span-2 md:col-span-5 flex justify-center items-center p-4"><div class="loader"></div></div>`;
         }
         function showError(message) { 
             signalContainer.innerHTML = `<div class="text-center p-10 text-red-400"><i class="fas fa-exclamation-circle fa-2x mb-3"></i><h3 class="font-bold text-lg">Error</h3><p>${message}</p></div>`;
@@ -563,40 +592,6 @@
         }
         
         async function updateGlobalDashboard() {
-            marketOverview.innerHTML = `
-                <!-- Market Cap -->
-                <div class="bg-gray-800 p-4 rounded-lg shadow-lg">
-                    <h3 class="text-sm font-medium text-gray-400">Market Cap</h3>
-                    <p id="market-cap" class="text-2xl font-semibold text-white mt-1">-</p>
-                    <p id="market-cap-change" class="text-sm font-medium mt-1">-</p>
-                </div>
-                <!-- 24h Volume -->
-                <div class="bg-gray-800 p-4 rounded-lg shadow-lg">
-                    <h3 class="text-sm font-medium text-gray-400">24h Volume</h3>
-                    <p id="volume-24h" class="text-2xl font-semibold text-white mt-1">-</p>
-                </div>
-                <!-- Advancers vs Decliners -->
-                <div class="bg-gray-800 p-4 rounded-lg shadow-lg">
-                    <h3 class="text-sm font-medium text-gray-400">Market Trend (24h)</h3>
-                    <div class="mt-1">
-                        <p id="advancers" class="text-lg font-semibold text-green-400">- Advancers</p>
-                        <p id="decliners" class="text-lg font-semibold text-red-400 mt-1">- Decliners</p>
-                    </div>
-                </div>
-                <!-- Fear & Greed Index -->
-                <div class="bg-gray-800 p-4 rounded-lg shadow-lg">
-                    <h3 class="text-sm font-medium text-gray-400">Fear & Greed Index</h3>
-                    <p id="fear-greed" class="text-2xl font-semibold text-white mt-1">-</p>
-                    <p id="fear-greed-text" class="text-sm font-medium mt-1">-</p>
-                </div>
-                <!-- BTC Dominance Chart -->
-                <div class="bg-gray-800 p-4 rounded-lg shadow-lg">
-                    <h3 class="text-sm font-medium text-gray-400 mb-2">BTC Dominance</h3>
-                    <div class="h-24 flex items-center justify-center">
-                        <canvas id="btc-dominance-chart"></canvas>
-                    </div>
-                </div>`;
-            
             const marketCapEl = document.getElementById('market-cap');
             const marketCapChangeEl = document.getElementById('market-cap-change');
             const volume24hEl = document.getElementById('volume-24h');
@@ -671,7 +666,7 @@
                     }
                 });
             } catch (e) {
-                marketOverview.innerHTML = `<div class="col-span-2 md:col-span-5 text-red-400 text-sm">Could not load market dashboard data.</div>`;
+                marketOverview.innerHTML = `<div class="col-span-2 md:col-span-5 text-red-400 text-sm p-4 text-center">Could not load market dashboard data.</div>`;
             }
         }
 
