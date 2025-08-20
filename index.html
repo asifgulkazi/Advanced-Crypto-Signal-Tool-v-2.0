@@ -163,16 +163,6 @@
             analysisHeader.textContent = headerText;
 
             try {
-                // Fetch daily klines specifically for pivot point calculations
-                const dailyKlinesUrl = `https://api.binance.com/api/v3/klines?symbol=${pair}&interval=1d&limit=2`;
-                const dailyKlinesResponse = await fetch(dailyKlinesUrl);
-                if (!dailyKlinesResponse.ok) throw new Error(`Could not fetch daily data for pivots.`);
-                const dailyKlines = await dailyKlinesResponse.json();
-                const prevDayCandle = dailyKlines[0]; // Binance returns [oldest, newest], so [0] is previous day
-                const prevDayHigh = parseFloat(prevDayCandle[2]);
-                const prevDayLow = parseFloat(prevDayCandle[3]);
-                const prevDayClose = parseFloat(prevDayCandle[4]);
-
                 // Fetch klines for the user-selected interval for technical indicators
                 const klinesUrl = `https://api.binance.com/api/v3/klines?symbol=${pair}&interval=${interval}&limit=100`;
                 const klinesResponse = await fetch(klinesUrl);
@@ -192,7 +182,7 @@
 
                 // Calculate indicators
                 const rsi = calculateRSI(closePrices);
-                const { volatilityLabel } = calculateVolatility(highPrices, lowPrices, closePrices);
+                const { volatilityLabel, atr } = calculateVolatility(highPrices, lowPrices, closePrices);
                 const sma20 = calculateSMA(closePrices, 20);
                 const sma50 = calculateSMA(closePrices, 50);
                 const macd = calculateMACD(closePrices);
@@ -219,15 +209,32 @@
                     justification = "The market is in a downtrend. For <strong>Spot trading</strong>, it's safer to wait for a buying opportunity.";
                 }
                 
-                const { tp1, tp2, tp3, stopLoss, riskRewardRatio, slPercent, tp1Percent, tp2Percent, tp3Percent } = calculateSlAndTpLevels(currentPrice, prevDayHigh, prevDayLow, prevDayClose);
+                // CORRECTED: Choose SL/TP calculation method based on timeframe/style
+                let tradeLevels;
+                const shortTermIntervals = ['1m', '5m', '15m'];
+                if (spotType === 'scalp' || shortTermIntervals.includes(interval)) {
+                    tradeLevels = calculateAtrSlAndTpLevels(currentPrice, atr, tradeSignal);
+                } else {
+                    // For longer timeframes, use Daily Pivots
+                    const dailyKlinesUrl = `https://api.binance.com/api/v3/klines?symbol=${pair}&interval=1d&limit=2`;
+                    const dailyKlinesResponse = await fetch(dailyKlinesUrl);
+                    if (!dailyKlinesResponse.ok) throw new Error(`Could not fetch daily data for pivots.`);
+                    const dailyKlines = await dailyKlinesResponse.json();
+                    const prevDayCandle = dailyKlines[0];
+                    const prevDayHigh = parseFloat(prevDayCandle[2]);
+                    const prevDayLow = parseFloat(prevDayCandle[3]);
+                    const prevDayClose = parseFloat(prevDayCandle[4]);
+                    tradeLevels = calculatePivotSlAndTpLevels(currentPrice, prevDayHigh, prevDayLow, prevDayClose);
+                }
+
                 const fundamentalAnalysis = generateFundamentalAnalysis(trendDirection);
 
                 const signalData = {
                     pair, tradeType: tradeSignal, trendDirection, currentPrice,
-                    support: stopLoss, // S1 from pivots is our stop loss/support
-                    resistance: tp1, // R1 from pivots is our first TP/resistance
+                    support: tradeLevels.stopLoss,
+                    resistance: tradeLevels.tp1,
                     rsi, macd, volatilityLabel,
-                    tp1, tp2, tp3, stopLoss, riskRewardRatio, slPercent, tp1Percent, tp2Percent, tp3Percent,
+                    ...tradeLevels,
                     justification,
                     ...fundamentalAnalysis,
                     maxPrice: prevHigh,
@@ -248,7 +255,7 @@
         }
         
         // --- Calculation Helpers ---
-        function calculateSlAndTpLevels(currentPrice, prevDayHigh, prevDayLow, prevDayClose) {
+        function calculatePivotSlAndTpLevels(currentPrice, prevDayHigh, prevDayLow, prevDayClose) {
             const P = (prevDayHigh + prevDayLow + prevDayClose) / 3;
             const S1 = (P * 2) - prevDayHigh;
             const R1 = (P * 2) - prevDayLow;
@@ -267,6 +274,44 @@
 
             const risk = currentPrice - stopLoss;
             const reward = tp1 - currentPrice;
+            const riskRewardRatio = (risk > 0 && reward > 0) ? (reward / risk).toFixed(2) : 0;
+
+            return { tp1, tp2, tp3, stopLoss, riskRewardRatio, slPercent, tp1Percent, tp2Percent, tp3Percent };
+        }
+        
+        // NEW: ATR-based SL/TP for short timeframes
+        function calculateAtrSlAndTpLevels(currentPrice, atr, signal) {
+            const slMultiplier = 1.5;
+            const tp1Multiplier = 1.0;
+            const tp2Multiplier = 2.0;
+            const tp3Multiplier = 3.0;
+
+            let stopLoss, tp1, tp2, tp3;
+
+            if (signal === 'Long (Buy)') {
+                stopLoss = currentPrice - (atr * slMultiplier);
+                tp1 = currentPrice + (atr * tp1Multiplier);
+                tp2 = currentPrice + (atr * tp2Multiplier);
+                tp3 = currentPrice + (atr * tp3Multiplier);
+            } else if (signal === 'Short (Sell)') {
+                stopLoss = currentPrice + (atr * slMultiplier);
+                tp1 = currentPrice - (atr * tp1Multiplier);
+                tp2 = currentPrice - (atr * tp2Multiplier);
+                tp3 = currentPrice - (atr * tp3Multiplier);
+            } else { // Neutral, provide potential breakout levels
+                stopLoss = currentPrice - (atr * slMultiplier);
+                tp1 = currentPrice + (atr * tp1Multiplier);
+                tp2 = currentPrice + (atr * tp2Multiplier);
+                tp3 = currentPrice + (atr * tp3Multiplier);
+            }
+            
+            const slPercent = (stopLoss - currentPrice) / currentPrice;
+            const tp1Percent = (tp1 - currentPrice) / currentPrice;
+            const tp2Percent = (tp2 - currentPrice) / currentPrice;
+            const tp3Percent = (tp3 - currentPrice) / currentPrice;
+            
+            const risk = Math.abs(currentPrice - stopLoss);
+            const reward = Math.abs(tp1 - currentPrice);
             const riskRewardRatio = (risk > 0 && reward > 0) ? (reward / risk).toFixed(2) : 0;
 
             return { tp1, tp2, tp3, stopLoss, riskRewardRatio, slPercent, tp1Percent, tp2Percent, tp3Percent };
@@ -317,7 +362,7 @@
             return ema;
         }
         function calculateVolatility(highs, lows, closes) {
-            if (highs.length < 15) return { volatility: 0, volatilityLabel: "Low" };
+            if (highs.length < 15) return { volatility: 0, volatilityLabel: "Low", atr: 0 };
             let tr = [];
             for(let i = 1; i < highs.length; i++) {
                 tr.push(Math.max(highs[i] - lows[i], Math.abs(highs[i] - closes[i-1]), Math.abs(lows[i] - closes[i-1])));
@@ -327,7 +372,7 @@
             let label = "Low";
             if (volatility > 1.5) label = "High";
             else if (volatility > 0.7) label = "Medium";
-            return { volatility: volatility.toFixed(2), volatilityLabel: label };
+            return { volatility: volatility.toFixed(2), volatilityLabel: label, atr };
         }
         
         function generateFundamentalAnalysis(trend) {
