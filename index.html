@@ -125,6 +125,14 @@
                 const highPrices = klines.map(k => parseFloat(k[2]));
                 const lowPrices = klines.map(k => parseFloat(k[3]));
                 
+                // *** FIX: Use previous candle for Pivot Points and High/Low/Avg stats ***
+                const previousCandle = klines[klines.length - 2];
+                const prevHigh = parseFloat(previousCandle[2]);
+                const prevLow = parseFloat(previousCandle[3]);
+                const prevClose = parseFloat(previousCandle[4]);
+                const pivots = calculatePivotPoints(prevHigh, prevLow, prevClose);
+                const typicalAveragePrice = (prevHigh + prevLow + prevClose) / 3;
+
                 const rsi = calculateRSI(closePrices);
                 const { volatilityLabel } = calculateVolatility(highPrices, lowPrices, closePrices);
                 const sma20 = calculateSMA(closePrices, 20);
@@ -157,15 +165,15 @@
 
                 const signalData = {
                     pair, tradeType: tradeSignal, trendDirection, currentPrice,
-                    support: Math.min(...lowPrices.slice(-50)),
-                    resistance: Math.max(...highPrices.slice(-50)),
+                    support: pivots.s1, // Using Pivot Support 1
+                    resistance: pivots.r1, // Using Pivot Resistance 1
                     rsi, macd, volatilityLabel,
                     tp1, tp2, tp3, stopLoss, riskRewardRatio, slPercent, tp1Percent, tp2Percent, tp3Percent,
                     justification,
                     ...fundamentalAnalysis,
-                    maxPrice: Math.max(...highPrices),
-                    minPrice: Math.min(...lowPrices),
-                    avgPrice: closePrices.reduce((a, b) => a + b, 0) / closePrices.length,
+                    maxPrice: prevHigh,
+                    minPrice: prevLow,
+                    avgPrice: typicalAveragePrice,
                     interval,
                     timestamp: new Date()
                 };
@@ -180,6 +188,15 @@
         }
         
         // --- Calculation Helpers ---
+        function calculatePivotPoints(high, low, close) {
+            const P = (high + low + close) / 3;
+            const R1 = (2 * P) - low;
+            const S1 = (2 * P) - high;
+            const R2 = P + (high - low);
+            const S2 = P - (high - low);
+            return { p: P, r1: R1, s1: S1, r2: R2, s2: S2 };
+        }
+        
         function calculateLevels(price, signal, tradeType, spotType, highs, lows) {
             let tp1Percent, tp2Percent, tp3Percent, slPercent;
             const type = tradeType === 'spot' ? spotType : 'futures';
@@ -396,15 +413,15 @@
                 <!-- New Stats Boxes -->
                 <div class="grid grid-cols-3 gap-4 text-center mb-4">
                     <div class="bg-gray-700/50 p-3 rounded-lg">
-                        <p class="text-xs text-gray-400">High (${data.interval})</p>
+                        <p class="text-xs text-gray-400">High (Prev ${data.interval})</p>
                         <p class="font-semibold text-white">$${data.maxPrice.toFixed(pricePrecision)}</p>
                     </div>
                     <div class="bg-gray-700/50 p-3 rounded-lg">
-                        <p class="text-xs text-gray-400">Low (${data.interval})</p>
+                        <p class="text-xs text-gray-400">Low (Prev ${data.interval})</p>
                         <p class="font-semibold text-white">$${data.minPrice.toFixed(pricePrecision)}</p>
                     </div>
                     <div class="bg-gray-700/50 p-3 rounded-lg">
-                        <p class="text-xs text-gray-400">Avg (${data.interval})</p>
+                        <p class="text-xs text-gray-400">Avg (Prev ${data.interval})</p>
                         <p class="font-semibold text-white">$${data.avgPrice.toFixed(pricePrecision)}</p>
                     </div>
                 </div>
