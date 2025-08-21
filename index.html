@@ -92,16 +92,7 @@
         </div>
 
         <div id="timeframe-tabs" class="flex flex-wrap justify-center gap-2 mb-6">
-            <button class="tab" data-interval="1m">1m</button>
-            <button class="tab" data-interval="5m">5m</button>
-            <button class="tab" data-interval="15m">15m</button>
-            <button class="tab active" data-interval="1h">1h</button>
-            <button class="tab" data-interval="4h">4h</button>
-            <button class="tab" data-interval="8h">8h</button>
-            <button class="tab" data-interval="12h">12h</button>
-            <button class="tab" data-interval="1d">1d</button>
-            <button class="tab" data-interval="1w">1w</button>
-            <button class="tab" data-interval="1M">1M</button>
+            <!-- Timeframe buttons will be dynamically generated here -->
         </div>
 
         <div class="flex flex-col sm:flex-row gap-2 mb-6 max-w-lg mx-auto">
@@ -151,6 +142,15 @@
         let currentSpotType = 'day';
         let priceSocket = null;
         let btcDominanceChart; // To hold the chart instance
+
+        // --- NEW: Timeframe Mappings ---
+        const timeframeMappings = {
+            all: ['1m', '5m', '15m', '1h', '4h', '8h', '12h', '1d', '1w', '1M'],
+            scalp: ['1m', '5m', '15m'],
+            day: ['5m', '15m', '1h', '4h'],
+            swing: ['1h', '4h', '8h', '12h', '1d'],
+            positional: ['1d', '1w', '1M']
+        };
 
         // --- Main Signal Generation Function ---
         async function getSignal(pair, interval, tradeType, spotType) {
@@ -209,13 +209,11 @@
                     justification = "The market is in a downtrend. For <strong>Spot trading</strong>, it's safer to wait for a buying opportunity.";
                 }
                 
-                // CORRECTED: Choose SL/TP calculation method based on timeframe/style
                 let tradeLevels;
                 const shortTermIntervals = ['1m', '5m', '15m'];
-                if (spotType === 'scalp' || shortTermIntervals.includes(interval)) {
+                if (spotType === 'scalp' || (spotType === 'day' && shortTermIntervals.includes(interval))) {
                     tradeLevels = calculateAtrSlAndTpLevels(currentPrice, atr, tradeSignal);
                 } else {
-                    // For longer timeframes, use Daily Pivots
                     const dailyKlinesUrl = `https://api.binance.com/api/v3/klines?symbol=${pair}&interval=1d&limit=2`;
                     const dailyKlinesResponse = await fetch(dailyKlinesUrl);
                     if (!dailyKlinesResponse.ok) throw new Error(`Could not fetch daily data for pivots.`);
@@ -279,7 +277,6 @@
             return { tp1, tp2, tp3, stopLoss, riskRewardRatio, slPercent, tp1Percent, tp2Percent, tp3Percent };
         }
         
-        // NEW: ATR-based SL/TP for short timeframes
         function calculateAtrSlAndTpLevels(currentPrice, atr, signal) {
             const slMultiplier = 1.5;
             const tp1Multiplier = 1.0;
@@ -442,12 +439,36 @@
         refreshButton.addEventListener('click', handleFetch);
         pairInput.addEventListener('keyup', (e) => { if (e.key === 'Enter') handleFetch(); });
         
+        // NEW: Function to dynamically update timeframe tabs
+        function updateTimeframeTabs(type) {
+            const relevantTimeframes = timeframeMappings[type];
+            timeframeTabsContainer.innerHTML = ''; // Clear existing tabs
+
+            relevantTimeframes.forEach((interval, index) => {
+                const button = document.createElement('button');
+                button.className = 'tab';
+                button.dataset.interval = interval;
+                button.textContent = interval;
+                if (index === 0) { // Make the first one active by default
+                    button.classList.add('active');
+                    currentInterval = interval; // Update the state
+                }
+                timeframeTabsContainer.appendChild(button);
+            });
+        }
+
         tradeTypeTabsContainer.addEventListener('click', (e) => {
             if (e.target.classList.contains('tab')) {
                 tradeTypeTabsContainer.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
                 e.target.classList.add('active');
                 currentTradeType = e.target.dataset.type;
-                spotSubTypeTabsContainer.style.display = currentTradeType === 'spot' ? 'flex' : 'none';
+                if (currentTradeType === 'spot') {
+                    spotSubTypeTabsContainer.style.display = 'flex';
+                    updateTimeframeTabs(currentSpotType);
+                } else {
+                    spotSubTypeTabsContainer.style.display = 'none';
+                    updateTimeframeTabs('all');
+                }
                 handleFetch();
             }
         });
@@ -456,6 +477,7 @@
                 spotSubTypeTabsContainer.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
                 e.target.classList.add('active');
                 currentSpotType = e.target.dataset.spotType;
+                updateTimeframeTabs(currentSpotType);
                 handleFetch();
             }
         });
@@ -716,6 +738,7 @@
         }
 
         document.addEventListener('DOMContentLoaded', () => {
+            updateTimeframeTabs(currentSpotType); // Set initial timeframes
             getSignal('BTCUSDT', currentInterval, currentTradeType, currentSpotType);
             updateGlobalDashboard();
         });
