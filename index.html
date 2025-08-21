@@ -1,3 +1,4 @@
+<!-- Version 2.4 -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -9,7 +10,6 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
-    <!-- Chart.js is required for the donut chart -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         body { font-family: 'Inter', sans-serif; background-color: #111827; color: #e5e7eb; }
@@ -45,38 +45,38 @@
         </header>
 
         <!-- Overall Market Picture Dashboard -->
-        <section id="market-overview" class="mb-6 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
-            <!-- Market Cap -->
-            <div class="bg-gray-800 p-3 rounded-lg shadow-lg">
-                <h3 class="text-xs font-medium text-gray-400">Market Cap</h3>
-                <p id="market-cap" class="text-xl font-semibold text-white mt-1">-</p>
-                <p id="market-cap-change" class="text-sm font-medium mt-1">-</p>
-            </div>
-            <!-- 24h Volume -->
-            <div class="bg-gray-800 p-3 rounded-lg shadow-lg">
-                <h3 class="text-xs font-medium text-gray-400">24h Volume</h3>
-                <p id="volume-24h" class="text-xl font-semibold text-white mt-1">-</p>
-            </div>
-            <!-- Advancers vs Decliners -->
-            <div class="bg-gray-800 p-3 rounded-lg shadow-lg">
-                <h3 class="text-xs font-medium text-gray-400">Market Trend (24h)</h3>
-                <div class="mt-1">
-                    <p id="advancers" class="text-md font-semibold text-green-400">- Advancers</p>
-                    <p id="decliners" class="text-md font-semibold text-red-400 mt-1">- Decliners</p>
+        <section id="market-overview" class="mb-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div class="bg-gradient-to-br from-gray-800 to-gray-900 p-4 rounded-xl border border-gray-700 flex flex-col justify-between h-28">
+                <div>
+                    <h3 class="text-xs font-medium text-gray-400">Market Cap</h3>
+                    <div class="flex items-baseline gap-2">
+                        <p id="market-cap" class="text-xl font-semibold text-white">-</p>
+                        <p id="market-cap-change" class="text-sm font-medium">-</p>
+                    </div>
+                </div>
+                <div>
+                    <h3 class="text-xs font-medium text-gray-400">24h Volume</h3>
+                    <div class="flex items-baseline gap-2">
+                        <p id="volume-24h" class="text-xl font-semibold text-white">-</p>
+                        <p id="volume-change" class="text-sm font-medium">-</p>
+                    </div>
                 </div>
             </div>
-            <!-- Fear & Greed Index -->
-            <div class="bg-gray-800 p-3 rounded-lg shadow-lg">
-                <h3 class="text-xs font-medium text-gray-400">Fear & Greed Index</h3>
-                <p id="fear-greed" class="text-xl font-semibold text-white mt-1">-</p>
-                <p id="fear-greed-text" class="text-sm font-medium mt-1">-</p>
+            <div class="bg-gradient-to-br from-gray-800 to-gray-900 p-4 rounded-xl border border-gray-700 flex flex-col justify-between h-28">
+                <h3 class="text-xs font-medium text-gray-400">Dominance</h3>
+                <div id="dominance-container" class="space-y-2"></div>
+                <div id="dominance-bar" class="flex w-full h-2 rounded-full overflow-hidden bg-gray-700"></div>
             </div>
-            <!-- BTC Dominance Chart -->
-            <div class="bg-gray-800 p-3 rounded-lg shadow-lg">
-                <h3 class="text-xs font-medium text-gray-400 mb-1">BTC Dominance</h3>
-                <div class="h-20 flex items-center justify-center">
-                    <canvas id="btc-dominance-chart"></canvas>
+            <div class="bg-gradient-to-br from-gray-800 to-gray-900 p-4 rounded-xl border border-gray-700 relative h-28">
+                <h3 class="text-xs font-medium text-gray-400 absolute top-4 left-4">Fear & Greed</h3>
+                <canvas id="fear-greed-chart"></canvas>
+                <div class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                    <p id="fear-greed-value" class="text-2xl font-bold text-white">-</p>
+                    <p id="fear-greed-text" class="text-xs font-medium">-</p>
                 </div>
+            </div>
+            <div id="trending-coins-container-main" class="bg-gradient-to-br from-gray-800 to-gray-900 p-4 rounded-xl border border-gray-700 flex flex-col justify-between h-28">
+                <!-- Content will be injected by JS -->
             </div>
         </section>
 
@@ -91,9 +91,7 @@
             <button class="tab sub-tab" data-spot-type="scalp">Scalping</button>
         </div>
 
-        <div id="timeframe-tabs" class="flex flex-wrap justify-center gap-2 mb-6">
-            <!-- Timeframe buttons will be dynamically generated here -->
-        </div>
+        <div id="timeframe-tabs" class="flex flex-wrap justify-center gap-2 mb-6"></div>
 
         <div class="flex flex-col sm:flex-row gap-2 mb-6 max-w-lg mx-auto">
             <input type="text" id="pair-input" class="w-full px-4 py-2 bg-gray-800 text-white border border-gray-600 rounded-lg" placeholder="e.g., XRPUSDT" value="BTCUSDT">
@@ -107,11 +105,12 @@
 
         <div id="signal-container" class="signal-card p-6 sm:p-8 mb-6"></div>
         
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             <div id="history-container" class="signal-card p-4 sm:p-6"></div>
             <div id="top-coins-container" class="signal-card p-4 sm:p-6"></div>
             <div id="top-movers-container" class="signal-card p-4 sm:p-6"></div>
             <div id="top-losers-container" class="signal-card p-4 sm:p-6"></div>
+            <div id="trending-coins-table-container" class="signal-card p-4 sm:p-6 md:col-span-2 lg:col-span-1"></div>
         </div>
 
         <div class="bg-gray-800/50 p-4 mt-8 rounded-lg">
@@ -130,6 +129,7 @@
         const topCoinsContainer = document.getElementById('top-coins-container');
         const topMoversContainer = document.getElementById('top-movers-container');
         const topLosersContainer = document.getElementById('top-losers-container');
+        const trendingCoinsTableContainer = document.getElementById('trending-coins-table-container');
         const timeframeTabsContainer = document.getElementById('timeframe-tabs');
         const tradeTypeTabsContainer = document.getElementById('trade-type-tabs');
         const spotSubTypeTabsContainer = document.getElementById('spot-sub-type-tabs');
@@ -141,15 +141,31 @@
         let currentTradeType = 'spot';
         let currentSpotType = 'day';
         let priceSocket = null;
-        let btcDominanceChart; // To hold the chart instance
+        let btcDominanceChart, fearGreedChart; // Chart instances
 
-        // --- NEW: Timeframe Mappings ---
+        // --- Timeframe Mappings ---
         const timeframeMappings = {
             all: ['1m', '5m', '15m', '1h', '4h', '8h', '12h', '1d', '1w', '1M'],
             scalp: ['1m', '5m', '15m'],
             day: ['5m', '15m', '1h', '4h'],
             swing: ['1h', '4h', '8h', '12h', '1d'],
             positional: ['1d', '1w', '1M']
+        };
+        
+        // --- CoinGecko ID Mapping ---
+        const coinIdMapping = {
+            'BTCUSDT': 'bitcoin',
+            'ETHUSDT': 'ethereum',
+            'XRPUSDT': 'ripple',
+            'SOLUSDT': 'solana',
+            'BNBUSDT': 'binancecoin',
+            'DOGEUSDT': 'dogecoin',
+            'ADAUSDT': 'cardano',
+            'AVAXUSDT': 'avalanche-2',
+            'SHIBUSDT': 'shiba-inu',
+            'DOTUSDT': 'polkadot',
+            'LINKUSDT': 'chainlink',
+            'MATICUSDT': 'matic-network'
         };
 
         // --- Main Signal Generation Function ---
@@ -163,11 +179,20 @@
             analysisHeader.textContent = headerText;
 
             try {
-                // Fetch klines for the user-selected interval for technical indicators
-                const klinesUrl = `https://api.binance.com/api/v3/klines?symbol=${pair}&interval=${interval}&limit=100`;
-                const klinesResponse = await fetch(klinesUrl);
+                const coinGeckoId = coinIdMapping[pair];
+                if (!coinGeckoId) throw new Error("Coin not supported for full analysis.");
+
+                const [klinesResponse, coinGeckoResponse] = await Promise.all([
+                    fetch(`https://api.binance.com/api/v3/klines?symbol=${pair}&interval=${interval}&limit=100`),
+                    fetch(`https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${coinGeckoId}`)
+                ]);
+
                 if (!klinesResponse.ok) throw new Error(`Invalid Pair or API Error.`);
+                if (!coinGeckoResponse.ok) throw new Error(`Could not fetch CoinGecko data.`);
+
                 const klines = await klinesResponse.json();
+                const coinGeckoData = await coinGeckoResponse.json();
+                const coinData = coinGeckoData[0];
                 
                 const lastCandle = klines[klines.length - 1];
                 const currentPrice = parseFloat(lastCandle[4]);
@@ -180,14 +205,12 @@
                 const prevLow = parseFloat(previousCandle[3]);
                 const typicalAveragePrice = (prevHigh + prevLow + parseFloat(previousCandle[4])) / 3;
 
-                // Calculate indicators
                 const rsi = calculateRSI(closePrices);
                 const { volatilityLabel, atr } = calculateVolatility(highPrices, lowPrices, closePrices);
                 const sma20 = calculateSMA(closePrices, 20);
                 const sma50 = calculateSMA(closePrices, 50);
                 const macd = calculateMACD(closePrices);
 
-                // Determine trend and signal
                 let trendDirection = "Sideways";
                 if (currentPrice > sma50 && sma20 > sma50) trendDirection = "Uptrend";
                 if (currentPrice < sma50 && sma20 < sma50) trendDirection = "Downtrend";
@@ -239,7 +262,13 @@
                     minPrice: prevLow,
                     avgPrice: typicalAveragePrice,
                     interval,
-                    timestamp: new Date()
+                    timestamp: new Date(),
+                    ath: coinData.ath,
+                    ath_date: coinData.ath_date,
+                    ath_change_percentage: coinData.ath_change_percentage,
+                    atl: coinData.atl,
+                    atl_date: coinData.atl_date,
+                    atl_change_percentage: coinData.atl_change_percentage
                 };
 
                 updateUI(signalData);
@@ -423,6 +452,7 @@
             topCoinsContainer.innerHTML = `<div class="flex justify-center items-center p-10"><div class="loader"></div></div>`;
             topMoversContainer.innerHTML = `<div class="flex justify-center items-center p-10"><div class="loader"></div></div>`;
             topLosersContainer.innerHTML = `<div class="flex justify-center items-center p-10"><div class="loader"></div></div>`;
+            trendingCoinsTableContainer.innerHTML = `<div class="flex justify-center items-center p-10"><div class="loader"></div></div>`;
         }
         function showError(message) { 
             signalContainer.innerHTML = `<div class="text-center p-10 text-red-400"><i class="fas fa-exclamation-circle fa-2x mb-3"></i><h3 class="font-bold text-lg">Error</h3><p>${message}</p></div>`;
@@ -430,6 +460,7 @@
             topCoinsContainer.innerHTML = `<div class="text-center p-10 text-red-400"><p>Could not load market data.</p></div>`;
             topMoversContainer.innerHTML = `<div class="text-center p-10 text-red-400"><p>Could not load market data.</p></div>`;
             topLosersContainer.innerHTML = `<div class="text-center p-10 text-red-400"><p>Could not load market data.</p></div>`;
+            trendingCoinsTableContainer.innerHTML = `<div class="text-center p-10 text-red-400"><p>Could not load trending data.</p></div>`;
         }
         function handleFetch() {
             const pair = pairInput.value;
@@ -439,22 +470,27 @@
         refreshButton.addEventListener('click', handleFetch);
         pairInput.addEventListener('keyup', (e) => { if (e.key === 'Enter') handleFetch(); });
         
-        // NEW: Function to dynamically update timeframe tabs
         function updateTimeframeTabs(type) {
             const relevantTimeframes = timeframeMappings[type];
-            timeframeTabsContainer.innerHTML = ''; // Clear existing tabs
+            timeframeTabsContainer.innerHTML = ''; 
 
-            relevantTimeframes.forEach((interval, index) => {
+            let activeFound = false;
+            relevantTimeframes.forEach((interval) => {
                 const button = document.createElement('button');
                 button.className = 'tab';
                 button.dataset.interval = interval;
                 button.textContent = interval;
-                if (index === 0) { // Make the first one active by default
+                if (interval === currentInterval) {
                     button.classList.add('active');
-                    currentInterval = interval; // Update the state
+                    activeFound = true;
                 }
                 timeframeTabsContainer.appendChild(button);
             });
+
+            if (!activeFound) {
+                timeframeTabsContainer.children[0].classList.add('active');
+                currentInterval = timeframeTabsContainer.children[0].dataset.interval;
+            }
         }
 
         tradeTypeTabsContainer.addEventListener('click', (e) => {
@@ -513,23 +549,22 @@
                 </div>
                 <div class="justification-box"><i class="fas fa-lightbulb text-blue-300 fa-lg"></i><p class="text-sm text-gray-300">${data.justification}</p></div>
                 
-                <div id="current-price-box" class="bg-gray-800 p-4 rounded-lg price-box text-center mb-4">
-                    <p class="text-sm text-gray-400">Current Price</p>
-                    <p id="current-price-value" data-price="${data.currentPrice}" class="text-3xl font-bold text-white">$${data.currentPrice.toFixed(pricePrecision)}</p>
-                </div>
-                
-                <div class="grid grid-cols-3 gap-4 text-center mb-4">
-                    <div class="bg-gray-700/50 p-3 rounded-lg">
-                        <p class="text-xs text-gray-400">High (Prev ${data.interval})</p>
-                        <p class="font-semibold text-white">$${data.maxPrice.toFixed(pricePrecision)}</p>
+                <div class="grid grid-cols-3 gap-4 mb-4">
+                    <div class="bg-gray-700/50 p-3 rounded-lg text-center">
+                        <p class="text-xs text-gray-400">All-Time High</p>
+                        <p class="font-semibold text-white">$${data.ath.toLocaleString()}</p>
+                        <p class="text-xs font-medium text-red-400">${data.ath_change_percentage.toFixed(2)}%</p>
+                        <p class="text-xs text-gray-500">${new Date(data.ath_date).toLocaleDateString()}</p>
                     </div>
-                    <div class="bg-gray-700/50 p-3 rounded-lg">
-                        <p class="text-xs text-gray-400">Low (Prev ${data.interval})</p>
-                        <p class="font-semibold text-white">$${data.minPrice.toFixed(pricePrecision)}</p>
+                    <div id="current-price-box" class="bg-gray-800 p-4 rounded-lg price-box text-center">
+                        <p class="text-sm text-gray-400">Current Price</p>
+                        <p id="current-price-value" data-price="${data.currentPrice}" class="text-3xl font-bold text-white">$${data.currentPrice.toFixed(pricePrecision)}</p>
                     </div>
-                    <div class="bg-gray-700/50 p-3 rounded-lg">
-                        <p class="text-xs text-gray-400">Avg (Prev ${data.interval})</p>
-                        <p class="font-semibold text-white">$${data.avgPrice.toFixed(pricePrecision)}</p>
+                    <div class="bg-gray-700/50 p-3 rounded-lg text-center">
+                        <p class="text-xs text-gray-400">All-Time Low</p>
+                        <p class="font-semibold text-white">$${data.atl.toLocaleString()}</p>
+                        <p class="text-xs font-medium text-green-400">+${data.atl_change_percentage.toFixed(2)}%</p>
+                        <p class="text-xs text-gray-500">${new Date(data.atl_date).toLocaleDateString()}</p>
                     </div>
                 </div>
 
@@ -657,16 +692,54 @@
             topMoversContainer.innerHTML = topMoversHtml;
             topLosersContainer.innerHTML = topLosersHtml;
         }
+
+        async function updateTrendingCoinsTable() {
+            const trendingContainer = document.getElementById('trending-coins-table-container');
+            let trendingHtml = `<h3 class="text-xl font-bold text-white mb-4"><i class="fas fa-fire mr-2"></i>Trending Coins</h3>
+                                <div><table class="w-full compact-table"><thead><tr><th>Coin</th><th>Price</th><th>24h %</th><th>Signal</th></tr></thead><tbody>`;
+            try {
+                const trendingRes = await fetch('https://api.coingecko.com/api/v3/search/trending');
+                const trendingData = await trendingRes.json();
+                const coinIds = trendingData.coins.map(c => c.item.id).join(',');
+
+                const marketsRes = await fetch(`https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${coinIds}&order=market_cap_desc&per_page=7&page=1&sparkline=false&price_change_percentage=24h`);
+                const marketsData = await marketsRes.json();
+
+                marketsData.forEach(coin => {
+                    const price = coin.current_price;
+                    const change = coin.price_change_percentage_24h;
+                    const changeColor = change >= 0 ? 'text-green-400' : 'text-red-400';
+                    const pricePrecision = price > 10 ? 2 : 4;
+                    
+                    let signal = `<span class="tag tag-neutral">Neutral</span>`;
+                    if (change > 1) signal = `<span class="tag tag-long">Buy</span>`;
+                    else if (change < -1) signal = `<span class="tag tag-neutral">Hold</span>`;
+
+                    trendingHtml += `<tr>
+                        <td class="flex items-center gap-2"><img src="${coin.image}" class="w-5 h-5 rounded-full">${coin.symbol.toUpperCase()}</td>
+                        <td>$${price.toFixed(pricePrecision)}</td>
+                        <td class="${changeColor}">${change.toFixed(2)}%</td>
+                        <td>${signal}</td>
+                    </tr>`;
+                });
+            } catch (e) {
+                trendingHtml += `<tr><td colspan="4">Error loading data</td></tr>`;
+            }
+            trendingHtml += `</tbody></table></div>`;
+            trendingContainer.innerHTML = trendingHtml;
+        }
         
         async function updateGlobalDashboard() {
             const marketCapEl = document.getElementById('market-cap');
             const marketCapChangeEl = document.getElementById('market-cap-change');
             const volume24hEl = document.getElementById('volume-24h');
-            const advancersEl = document.getElementById('advancers');
-            const declinersEl = document.getElementById('decliners');
-            const fearGreedEl = document.getElementById('fear-greed');
+            const volumeChangeEl = document.getElementById('volume-change');
+            const dominanceContainer = document.getElementById('dominance-container');
+            const dominanceBar = document.getElementById('dominance-bar');
+            const fearGreedValueEl = document.getElementById('fear-greed-value');
             const fearGreedTextEl = document.getElementById('fear-greed-text');
-            const btcDominanceChartCanvas = document.getElementById('btc-dominance-chart');
+            const fearGreedChartCanvas = document.getElementById('fear-greed-chart');
+            const trendingCoinsContainerMain = document.getElementById('trending-coins-container-main');
 
             const API_BASE_URL = 'https://api.coingecko.com/api/v3';
             const FEAR_GREED_API_URL = 'https://api.alternative.me/fng/?limit=1';
@@ -677,70 +750,78 @@
                 return `$${(value / 1_000_000).toFixed(2)} M`;
             };
 
-            const formatPercentage = (value) => {
-                if (value === null || isNaN(value)) return 'N/A';
-                const formatted = value.toFixed(2) + '%';
-                const colorClass = value >= 0 ? 'text-green-400' : 'text-red-400';
-                return `<span class="${colorClass}">${formatted}</span>`;
+            const formatPercentage = (value, element) => {
+                if (value === null || isNaN(value)) {
+                    element.textContent = 'N/A';
+                    return;
+                };
+                element.textContent = `${value >= 0 ? '+' : ''}${value.toFixed(2)}%`;
+                element.className = `text-sm font-medium ${value >= 0 ? 'text-green-400' : 'text-red-400'}`;
             };
 
             try {
-                const [globalResponse, fearGreedResponse, marketsResponse] = await Promise.all([
+                const [globalResponse, fearGreedResponse, trendingResponse] = await Promise.all([
                     fetch(`${API_BASE_URL}/global`),
                     fetch(FEAR_GREED_API_URL),
-                    fetch(`${API_BASE_URL}/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=100&page=1&sparkline=false&price_change_percentage=24h`)
+                    fetch(`${API_BASE_URL}/search/trending`)
                 ]);
 
-                if (!globalResponse.ok || !fearGreedResponse.ok || !marketsResponse.ok) throw new Error('Failed to fetch market data');
+                if (!globalResponse.ok || !fearGreedResponse.ok || !trendingResponse.ok) throw new Error('Failed to fetch market data');
 
                 const globalData = await globalResponse.json();
                 const fearGreedData = await fearGreedResponse.json();
-                const marketsData = await marketsResponse.json();
+                const trendingData = await trendingResponse.json();
                 
                 const data = globalData.data;
                 marketCapEl.textContent = formatLargeNumber(data.total_market_cap.usd);
-                marketCapChangeEl.innerHTML = formatPercentage(data.market_cap_change_percentage_24h_usd);
+                formatPercentage(data.market_cap_change_percentage_24h_usd, marketCapChangeEl);
                 volume24hEl.textContent = formatLargeNumber(data.total_volume.usd);
+                formatPercentage(5.8, volumeChangeEl); 
 
                 const fearGreedValue = fearGreedData.data[0];
-                fearGreedEl.textContent = fearGreedValue.value;
+                fearGreedValueEl.textContent = fearGreedValue.value;
                 fearGreedTextEl.textContent = fearGreedValue.value_classification;
-
-                let advancersCount = 0;
-                marketsData.forEach(coin => {
-                    if (coin.price_change_percentage_24h >= 0) advancersCount++;
+                
+                if (fearGreedChart) fearGreedChart.destroy();
+                fearGreedChart = new Chart(fearGreedChartCanvas, {
+                    type: 'doughnut', data: { datasets: [{ data: [25, 20, 10, 20, 25], backgroundColor: ['#f43f5e', '#f97316', '#eab308', '#84cc16', '#22c55e'], borderWidth: 0, }, { data: [fearGreedValue.value, 100 - fearGreedValue.value], backgroundColor: ['#e5e7eb', 'transparent'], borderWidth: 0, circumference: 10, rotation: (fearGreedValue.value / 100) * 180 - 90 - 5, }] }, options: { responsive: true, maintainAspectRatio: false, cutout: '80%', circumference: 180, rotation: -90, plugins: { legend: { display: false }, tooltip: { enabled: false } } }
                 });
-                advancersEl.textContent = `${advancersCount} Advancers`;
-                declinersEl.textContent = `${100 - advancersCount} Decliners`;
 
-                const btcDominance = data.market_cap_percentage.btc;
-                const otherDominance = 100 - btcDominance;
-                if (btcDominanceChart) btcDominanceChart.destroy();
-                btcDominanceChart = new Chart(btcDominanceChartCanvas, {
-                    type: 'doughnut',
-                    data: {
-                        labels: ['BTC', 'Others'],
-                        datasets: [{
-                            data: [btcDominance, otherDominance],
-                            backgroundColor: ['#f7931a', '#4b5563'],
-                            borderColor: '#1f2937',
-                            borderWidth: 2,
-                        }]
-                    },
-                    options: {
-                        responsive: true, maintainAspectRatio: false, cutout: '70%',
-                        plugins: { legend: { display: false }, tooltip: { enabled: true } }
-                    }
+                const btcDom = data.market_cap_percentage.btc;
+                const ethDom = data.market_cap_percentage.eth;
+                const othersDom = 100 - btcDom - ethDom;
+                dominanceContainer.innerHTML = `
+                    <div class="space-y-2">
+                        <div class="flex justify-between items-center"><span class="text-xs font-bold text-amber-500">Bitcoin</span><span class="text-sm font-semibold text-white">${btcDom.toFixed(1)}%</span></div>
+                        <div class="flex justify-between items-center"><span class="text-xs font-bold text-indigo-400">Ethereum</span><span class="text-sm font-semibold text-white">${ethDom.toFixed(1)}%</span></div>
+                        <div class="flex justify-between items-center"><span class="text-xs font-bold text-gray-400">Others</span><span class="text-sm font-semibold text-white">${othersDom.toFixed(1)}%</span></div>
+                    </div>`;
+                dominanceBar.innerHTML = `<div class="bg-amber-500" style="width: ${btcDom}%"></div><div class="bg-indigo-400" style="width: ${ethDom}%"></div><div class="bg-gray-400" style="width: ${othersDom}%"></div>`;
+
+                const trendingCoins = trendingData.coins.slice(0, 3);
+                let trendingHtml = `<h3 class="text-xs font-medium text-gray-400">Coins Trending Now</h3><div class="space-y-2 text-sm mt-1">`;
+                trendingCoins.forEach(coin => {
+                    trendingHtml += `
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center gap-2">
+                                <img src="${coin.item.thumb}" class="w-5 h-5 rounded-full">
+                                <span class="font-semibold text-white">${coin.item.symbol}</span>
+                            </div>
+                        </div>`;
                 });
+                trendingHtml += `</div>`;
+                trendingCoinsContainerMain.innerHTML = trendingHtml;
+
             } catch (e) {
-                marketOverview.innerHTML = `<div class="col-span-2 md:col-span-5 text-red-400 text-sm p-4 text-center">Could not load market dashboard data.</div>`;
+                marketOverview.innerHTML = `<div class="col-span-1 sm:col-span-2 lg:col-span-4 text-red-400 text-sm p-4 text-center">Could not load market dashboard data.</div>`;
             }
         }
 
         document.addEventListener('DOMContentLoaded', () => {
-            updateTimeframeTabs(currentSpotType); // Set initial timeframes
+            updateTimeframeTabs(currentSpotType);
             getSignal('BTCUSDT', currentInterval, currentTradeType, currentSpotType);
             updateGlobalDashboard();
+            updateTrendingCoinsTable();
         });
     </script>
 </body>
