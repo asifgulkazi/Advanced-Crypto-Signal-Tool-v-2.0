@@ -1,4 +1,4 @@
-<!-- Version 4.5 - UI Polish -->
+<!-- Version 5.0 - Consistent +/- Signs for TP/SL -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -301,8 +301,8 @@
 
                 const signalData = {
                     pair, tradeType: tradeSignal, trendDirection, currentPrice,
-                    support: tradeLevels.stopLoss,
-                    resistance: tradeLevels.tp1,
+                    support: tradeLevels.support,
+                    resistance: tradeLevels.resistance,
                     rsi, macd, volatilityLabel,
                     ...tradeLevels,
                     justification,
@@ -330,33 +330,56 @@
         
         // --- Calculation Helpers ---
         function calculatePivotSlAndTpLevels(currentPrice, prevDayHigh, prevDayLow, prevDayClose, signal) {
+            // Standard Pivot Point Calculations
             const P = (prevDayHigh + prevDayLow + prevDayClose) / 3;
-            const S1 = (P * 2) - prevDayHigh;
             const R1 = (P * 2) - prevDayLow;
+            const S1 = (P * 2) - prevDayHigh;
             const R2 = P + (prevDayHigh - prevDayLow);
+            const S2 = P - (prevDayHigh - prevDayLow);
             const R3 = prevDayHigh + 2 * (P - prevDayLow);
+            const S3 = prevDayLow - 2 * (prevDayHigh - P);
 
-            const stopLoss = S1;
-            const tp1 = R1;
-            const tp2 = R2;
-            const tp3 = R3;
+            let stopLoss, tp1, tp2, tp3, support, resistance;
+
+            if (signal.includes('Long')) {
+                stopLoss = S1;
+                tp1 = R1;
+                tp2 = R2;
+                tp3 = R3;
+                support = S1;
+                resistance = R1;
+            } else { // Handles Short and Neutral signals
+                stopLoss = R1;
+                tp1 = S1;
+                tp2 = S2;
+                tp3 = S3;
+                support = S1;
+                resistance = R1;
+            }
 
             const slPercent = (stopLoss - currentPrice) / currentPrice;
             const tp1Percent = (tp1 - currentPrice) / currentPrice;
             const tp2Percent = (tp2 - currentPrice) / currentPrice;
             const tp3Percent = (tp3 - currentPrice) / currentPrice;
 
-            let risk, reward;
+            let risk, reward1, reward2, reward3;
             if (signal.includes('Long')) {
                 risk = currentPrice - stopLoss;
-                reward = tp1 - currentPrice;
-            } else {
+                reward1 = tp1 - currentPrice;
+                reward2 = tp2 - currentPrice;
+                reward3 = tp3 - currentPrice;
+            } else { // Short
                 risk = stopLoss - currentPrice;
-                reward = currentPrice - tp1;
+                reward1 = currentPrice - tp1;
+                reward2 = currentPrice - tp2;
+                reward3 = currentPrice - tp3;
             }
-            const riskRewardRatio = (risk > 0 && reward > 0) ? (reward / risk).toFixed(2) : 0;
+            
+            const rr1 = (risk > 0 && reward1 > 0) ? (reward1 / risk).toFixed(1) : 0;
+            const rr2 = (risk > 0 && reward2 > 0) ? (reward2 / risk).toFixed(1) : 0;
+            const rr3 = (risk > 0 && reward3 > 0) ? (reward3 / risk).toFixed(1) : 0;
 
-            return { tp1, tp2, tp3, stopLoss, riskRewardRatio, slPercent, tp1Percent, tp2Percent, tp3Percent };
+            return { tp1, tp2, tp3, stopLoss, rr1, rr2, rr3, slPercent, tp1Percent, tp2Percent, tp3Percent, support, resistance };
         }
         
         function calculateAtrSlAndTpLevels(currentPrice, atr, signal) {
@@ -384,17 +407,23 @@
             const tp2Percent = (tp2 - currentPrice) / currentPrice;
             const tp3Percent = (tp3 - currentPrice) / currentPrice;
 
-            let risk, reward;
+            let risk, reward1, reward2, reward3;
             if (signal.includes('Long')) {
                 risk = currentPrice - stopLoss;
-                reward = tp1 - currentPrice;
-            } else {
+                reward1 = tp1 - currentPrice;
+                reward2 = tp2 - currentPrice;
+                reward3 = tp3 - currentPrice;
+            } else { // Short
                 risk = stopLoss - currentPrice;
-                reward = currentPrice - tp1;
+                reward1 = currentPrice - tp1;
+                reward2 = currentPrice - tp2;
+                reward3 = currentPrice - tp3;
             }
-            const riskRewardRatio = (risk > 0 && reward > 0) ? (reward / risk).toFixed(2) : 0;
+            const rr1 = (risk > 0 && reward1 > 0) ? (reward1 / risk).toFixed(1) : 0;
+            const rr2 = (risk > 0 && reward2 > 0) ? (reward2 / risk).toFixed(1) : 0;
+            const rr3 = (risk > 0 && reward3 > 0) ? (reward3 / risk).toFixed(1) : 0;
 
-            return { tp1, tp2, tp3, stopLoss, riskRewardRatio, slPercent, tp1Percent, tp2Percent, tp3Percent };
+            return { tp1, tp2, tp3, stopLoss, rr1, rr2, rr3, slPercent, tp1Percent, tp2Percent, tp3Percent };
         }
 
         function calculateRSI(prices, period = 14) { 
@@ -490,7 +519,7 @@
                 if (!priceElement || !priceBox) return;
                 const oldPrice = parseFloat(priceElement.dataset.price || 0);
                 const pricePrecision = newPrice > 10 ? 2 : 5;
-                priceElement.textContent = `$${newPrice.toFixed(pricePrecision)}`;
+                priceElement.textContent = `$${newPrice.toLocaleString('en-US', { minimumFractionDigits: pricePrecision, maximumFractionDigits: pricePrecision })}`;
                 priceElement.dataset.price = newPrice;
                 if (newPrice > oldPrice) priceBox.classList.add('price-up');
                 else if (newPrice < oldPrice) priceBox.classList.add('price-down');
@@ -599,10 +628,16 @@
             const pricePrecision = data.currentPrice > 10 ? 2 : 5;
             let tradeTypeClass = data.tradeType.includes('Long') ? 'tag-long' : data.tradeType.includes('Short') ? 'tag-short' : 'tag-neutral';
             
-            const slPercentText = data.slPercent ? `(${(data.slPercent * 100).toFixed(2)}%)` : '';
-            const tp1PercentText = data.tp1Percent ? `(${(data.tp1Percent * 100).toFixed(2)}%)` : '';
-            const tp2PercentText = data.tp2Percent ? `(${(data.tp2Percent * 100).toFixed(2)}%)` : '';
-            const tp3PercentText = data.tp3Percent ? `(${(data.tp3Percent * 100).toFixed(2)}%)` : '';
+            // --- MODIFIED SECTION: Enforce +/- signs ---
+            const slPercentText = data.slPercent ? `(-${Math.abs(data.slPercent * 100).toFixed(2)}%)` : '';
+            const tp1PercentText = data.tp1Percent ? `(+${Math.abs(data.tp1Percent * 100).toFixed(2)}%)` : '';
+            const tp2PercentText = data.tp2Percent ? `(+${Math.abs(data.tp2Percent * 100).toFixed(2)}%)` : '';
+            const tp3PercentText = data.tp3Percent ? `(+${Math.abs(data.tp3Percent * 100).toFixed(2)}%)` : '';
+            // --- END MODIFIED SECTION ---
+
+            const rr1Text = `<p class="text-xs text-blue-300 mt-1">R/R: 1:${data.rr1}</p>`;
+            const rr2Text = `<p class="text-xs text-blue-300 mt-1">R/R: 1:${data.rr2}</p>`;
+            const rr3Text = `<p class="text-xs text-blue-300 mt-1">R/R: 1:${data.rr3}</p>`;
 
             signalContainer.innerHTML = `
                 <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4">
@@ -626,7 +661,7 @@
                     </div>
                     <div id="current-price-box" class="bg-gray-800 p-4 rounded-lg price-box text-center">
                         <p class="text-sm text-gray-400">Current Price</p>
-                        <p id="current-price-value" data-price="${data.currentPrice}" class="text-3xl font-bold text-white">$${data.currentPrice.toFixed(pricePrecision)}</p>
+                        <p id="current-price-value" data-price="${data.currentPrice}" class="text-3xl font-bold text-white">$${data.currentPrice.toLocaleString('en-US', { minimumFractionDigits: pricePrecision, maximumFractionDigits: pricePrecision })}</p>
                     </div>
                     <div class="bg-gray-700/50 p-3 rounded-lg text-center">
                         <p class="text-xs text-gray-400">All-Time Low</p>
@@ -639,17 +674,16 @@
                 <div class="bg-gray-800/50 rounded-lg p-4 mb-4">
                     <h3 class="text-lg font-semibold text-white mb-3">Trade Setup</h3>
                     <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
-                        <div class="bg-red-900/50 p-3 rounded-lg"><p class="text-xs text-red-300">Stop Loss</p><p class="font-semibold text-red-300">$${data.stopLoss ? data.stopLoss.toFixed(pricePrecision) : 'N/A'}</p><p class="text-xs text-red-300">${slPercentText}</p></div>
-                        <div class="bg-green-900/50 p-3 rounded-lg"><p class="text-xs text-green-300">Take Profit 1</p><p class="font-semibold text-green-300">$${data.tp1 ? data.tp1.toFixed(pricePrecision) : 'N/A'}</p><p class="text-xs text-green-300">${tp1PercentText}</p></div>
-                        <div class="bg-green-900/50 p-3 rounded-lg"><p class="text-xs text-green-300">Take Profit 2</p><p class="font-semibold text-green-300">$${data.tp2 ? data.tp2.toFixed(pricePrecision) : 'N/A'}</p><p class="text-xs text-green-300">${tp2PercentText}</p></div>
-                        <div class="bg-green-900/50 p-3 rounded-lg"><p class="text-xs text-green-300">Take Profit 3</p><p class="font-semibold text-green-300">$${data.tp3 ? data.tp3.toFixed(pricePrecision) : 'N/A'}</p><p class="text-xs text-green-300">${tp3PercentText}</p></div>
+                        <div class="bg-red-900/50 p-3 rounded-lg flex flex-col justify-center"><p class="text-xs text-red-300">Stop Loss</p><p class="font-semibold text-red-300">$${data.stopLoss ? data.stopLoss.toLocaleString('en-US', { minimumFractionDigits: pricePrecision, maximumFractionDigits: pricePrecision }) : 'N/A'}</p><p class="text-xs text-red-300">${slPercentText}</p></div>
+                        <div class="bg-green-900/50 p-3 rounded-lg flex flex-col justify-center"><p class="text-xs text-green-300">Take Profit 1</p><p class="font-semibold text-green-300">$${data.tp1 ? data.tp1.toLocaleString('en-US', { minimumFractionDigits: pricePrecision, maximumFractionDigits: pricePrecision }) : 'N/A'}</p><p class="text-xs text-green-300">${tp1PercentText}</p>${rr1Text}</div>
+                        <div class="bg-green-900/50 p-3 rounded-lg flex flex-col justify-center"><p class="text-xs text-green-300">Take Profit 2</p><p class="font-semibold text-green-300">$${data.tp2 ? data.tp2.toLocaleString('en-US', { minimumFractionDigits: pricePrecision, maximumFractionDigits: pricePrecision }) : 'N/A'}</p><p class="text-xs text-green-300">${tp2PercentText}</p>${rr2Text}</div>
+                        <div class="bg-green-900/50 p-3 rounded-lg flex flex-col justify-center"><p class="text-xs text-green-300">Take Profit 3</p><p class="font-semibold text-green-300">$${data.tp3 ? data.tp3.toLocaleString('en-US', { minimumFractionDigits: pricePrecision, maximumFractionDigits: pricePrecision }) : 'N/A'}</p><p class="text-xs text-green-300">${tp3PercentText}</p>${rr3Text}</div>
                     </div>
-                    ${data.riskRewardRatio > 0 ? `<p class="text-center text-sm mt-3 text-blue-300">Risk/Reward Ratio (TP1): ~1:${data.riskRewardRatio}</p>` : ''}
                 </div>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div class="space-y-4 analysis-section">
                         <h3 class="text-xl font-bold text-white"><i class="fas fa-chart-bar mr-2"></i>Technical Analysis</h3>
-                        <div><h4>Support & Resistance</h4><p>Support: $${data.support.toFixed(pricePrecision)} | Resistance: $${data.resistance.toFixed(pricePrecision)}</p></div>
+                        <div><h4>Support & Resistance</h4><p>Support: $${data.support.toLocaleString('en-US', { minimumFractionDigits: pricePrecision, maximumFractionDigits: pricePrecision })} | Resistance: $${data.resistance.toLocaleString('en-US', { minimumFractionDigits: pricePrecision, maximumFractionDigits: pricePrecision })}</p></div>
                         <div><h4>Indicators</h4><p>RSI: ${data.rsi.toFixed(2)} | MACD Hist: ${data.macd.histogram} | Volatility: ${data.volatilityLabel}</p></div>
                     </div>
                     <div class="space-y-4 analysis-section">
@@ -676,9 +710,9 @@
                 const kline = recentKlines[i];
                 const prevKline = recentKlines[i+1];
                 const formatted = formatTimestamp(kline[0]);
-                const price = parseFloat(kline[4]).toFixed(pricePrecision);
+                const price = parseFloat(kline[4]).toLocaleString('en-US', { minimumFractionDigits: pricePrecision, maximumFractionDigits: pricePrecision });
                 const prevPrice = parseFloat(prevKline[4]);
-                const change = ((price - prevPrice) / prevPrice * 100).toFixed(2);
+                const change = ((parseFloat(kline[4]) - prevPrice) / prevPrice * 100).toFixed(2);
                 const changeColor = change >= 0 ? 'text-green-400' : 'text-red-400';
                 tableHTML += `<tr><td>${formatted.date}</td><td>${formatted.time}</td><td>$${price}</td><td class="${changeColor}">${change}%</td></tr>`;
             }
@@ -720,7 +754,7 @@
                     }
 
                     const pricePrecision = price > 10 ? 2 : 4;
-                    topCoinsHtml += `<tr><td class="flex items-center gap-2"><img src="${coinData.image}" class="w-5 h-5 rounded-full">${coinData.symbol.toUpperCase()}</td><td>$${price.toFixed(pricePrecision)}</td><td>${signal}</td></tr>`;
+                    topCoinsHtml += `<tr><td class="flex items-center gap-2"><img src="${coinData.image}" class="w-5 h-5 rounded-full">${coinData.symbol.toUpperCase()}</td><td>$${price.toLocaleString('en-US', { minimumFractionDigits: pricePrecision, maximumFractionDigits: pricePrecision })}</td><td>${signal}</td></tr>`;
                 });
 
 
@@ -732,11 +766,11 @@
                     const price = mover.current_price;
                     const change = mover.price_change_percentage_24h;
                     const pricePrecision = price > 10 ? 2 : 5;
-                    let signal = change > 5 ? `<span class="tag tag-strong-buy">Buy</span>` : `<span class="tag tag-long">Hold</span>`;
+                    let signal = change > 5 ? `<span class="tag tag-strong-buy">Buy</span>` : `<span class="tag tag-neutral">Hold</span>`;
                      if (tradeType === 'spot' && (signal.includes('Sell') || signal.includes('short'))) {
                         signal = `<span class="tag tag-neutral">Neutral</span>`;
                     }
-                    topMoversHtml += `<tr><td class="flex items-center gap-2"><img src="${mover.image}" class="w-5 h-5 rounded-full">${mover.symbol.toUpperCase()}</td><td>$${price.toFixed(pricePrecision)}</td><td class="text-green-400">${change.toFixed(2)}%</td><td>${signal}</td></tr>`;
+                    topMoversHtml += `<tr><td class="flex items-center gap-2"><img src="${mover.image}" class="w-5 h-5 rounded-full">${mover.symbol.toUpperCase()}</td><td>$${price.toLocaleString('en-US', { minimumFractionDigits: pricePrecision, maximumFractionDigits: pricePrecision })}</td><td class="text-green-400">${change.toFixed(2)}%</td><td>${signal}</td></tr>`;
                 });
 
                 validMovers.sort((a, b) => a.price_change_percentage_24h - b.price_change_percentage_24h);
@@ -744,11 +778,11 @@
                     const price = loser.current_price;
                     const change = loser.price_change_percentage_24h;
                     const pricePrecision = price > 10 ? 2 : 5;
-                    let signal = change < -5 ? `<span class="tag tag-strong-sell">Sell</span>` : `<span class="tag tag-short">Hold</span>`;
+                    let signal = change < -5 ? `<span class="tag tag-strong-sell">Sell</span>` : `<span class="tag tag-neutral">Hold</span>`;
                      if (tradeType === 'spot' && (signal.includes('Sell') || signal.includes('short'))) {
                         signal = `<span class="tag tag-neutral">Neutral</span>`;
                     }
-                    topLosersHtml += `<tr><td class="flex items-center gap-2"><img src="${loser.image}" class="w-5 h-5 rounded-full">${loser.symbol.toUpperCase()}</td><td>$${price.toFixed(pricePrecision)}</td><td class="text-red-400">${change.toFixed(2)}%</td><td>${signal}</td></tr>`;
+                    topLosersHtml += `<tr><td class="flex items-center gap-2"><img src="${loser.image}" class="w-5 h-5 rounded-full">${loser.symbol.toUpperCase()}</td><td>$${price.toLocaleString('en-US', { minimumFractionDigits: pricePrecision, maximumFractionDigits: pricePrecision })}</td><td class="text-red-400">${change.toFixed(2)}%</td><td>${signal}</td></tr>`;
                 });
 
 
@@ -793,7 +827,7 @@
 
                     trendingHtml += `<tr>
                         <td class="flex items-center gap-2"><img src="${coin.image}" class="w-5 h-5 rounded-full">${coin.symbol.toUpperCase()}</td>
-                        <td>$${price.toFixed(pricePrecision)}</td>
+                        <td>$${price.toLocaleString('en-US', { minimumFractionDigits: pricePrecision, maximumFractionDigits: pricePrecision })}</td>
                         <td class="${changeColor}">${change.toFixed(2)}%</td>
                         <td>${signal}</td>
                     </tr>`;
