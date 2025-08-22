@@ -1,4 +1,4 @@
-<!-- Version 4.3 - UI Polish -->
+<!-- Version 4.5 - UI Polish -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -288,19 +288,14 @@
                 }
                 
                 let tradeLevels;
-                const shortTermIntervals = ['1m', '5m', '15m'];
-                if (spotType === 'scalp' || (spotType === 'day' && shortTermIntervals.includes(interval))) {
-                    tradeLevels = calculateAtrSlAndTpLevels(currentPrice, atr, tradeSignal);
-                } else {
-                    const dailyKlinesUrl = `https://api.binance.com/api/v3/klines?symbol=${pair}&interval=1d&limit=2`;
-                    const dailyKlinesResponse = await fetchWithRetry(dailyKlinesUrl);
-                    const dailyKlines = await dailyKlinesResponse.json();
-                    const prevDayCandle = dailyKlines[0];
-                    const prevDayHigh = parseFloat(prevDayCandle[2]);
-                    const prevDayLow = parseFloat(prevDayCandle[3]);
-                    const prevDayClose = parseFloat(prevDayCandle[4]);
-                    tradeLevels = calculatePivotSlAndTpLevels(currentPrice, prevDayHigh, prevDayLow, prevDayClose, tradeSignal);
-                }
+                const dailyKlinesUrl = `https://api.binance.com/api/v3/klines?symbol=${pair}&interval=1d&limit=2`;
+                const dailyKlinesResponse = await fetchWithRetry(dailyKlinesUrl);
+                const dailyKlines = await dailyKlinesResponse.json();
+                const prevDayCandle = dailyKlines[0];
+                const prevDayHigh = parseFloat(prevDayCandle[2]);
+                const prevDayLow = parseFloat(prevDayCandle[3]);
+                const prevDayClose = parseFloat(prevDayCandle[4]);
+                tradeLevels = calculatePivotSlAndTpLevels(currentPrice, prevDayHigh, prevDayLow, prevDayClose, tradeSignal);
 
                 const fundamentalAnalysis = generateFundamentalAnalysis(trendDirection, fearGreedData);
 
@@ -346,6 +341,11 @@
             const tp2 = R2;
             const tp3 = R3;
 
+            const slPercent = (stopLoss - currentPrice) / currentPrice;
+            const tp1Percent = (tp1 - currentPrice) / currentPrice;
+            const tp2Percent = (tp2 - currentPrice) / currentPrice;
+            const tp3Percent = (tp3 - currentPrice) / currentPrice;
+
             let risk, reward;
             if (signal.includes('Long')) {
                 risk = currentPrice - stopLoss;
@@ -356,7 +356,7 @@
             }
             const riskRewardRatio = (risk > 0 && reward > 0) ? (reward / risk).toFixed(2) : 0;
 
-            return { tp1, tp2, tp3, stopLoss, riskRewardRatio };
+            return { tp1, tp2, tp3, stopLoss, riskRewardRatio, slPercent, tp1Percent, tp2Percent, tp3Percent };
         }
         
         function calculateAtrSlAndTpLevels(currentPrice, atr, signal) {
@@ -379,6 +379,11 @@
                 tp3 = currentPrice - (atr * tp3Multiplier);
             }
             
+            const slPercent = (stopLoss - currentPrice) / currentPrice;
+            const tp1Percent = (tp1 - currentPrice) / currentPrice;
+            const tp2Percent = (tp2 - currentPrice) / currentPrice;
+            const tp3Percent = (tp3 - currentPrice) / currentPrice;
+
             let risk, reward;
             if (signal.includes('Long')) {
                 risk = currentPrice - stopLoss;
@@ -389,7 +394,7 @@
             }
             const riskRewardRatio = (risk > 0 && reward > 0) ? (reward / risk).toFixed(2) : 0;
 
-            return { tp1, tp2, tp3, stopLoss, riskRewardRatio };
+            return { tp1, tp2, tp3, stopLoss, riskRewardRatio, slPercent, tp1Percent, tp2Percent, tp3Percent };
         }
 
         function calculateRSI(prices, period = 14) { 
@@ -594,6 +599,11 @@
             const pricePrecision = data.currentPrice > 10 ? 2 : 5;
             let tradeTypeClass = data.tradeType.includes('Long') ? 'tag-long' : data.tradeType.includes('Short') ? 'tag-short' : 'tag-neutral';
             
+            const slPercentText = data.slPercent ? `(${(data.slPercent * 100).toFixed(2)}%)` : '';
+            const tp1PercentText = data.tp1Percent ? `(${(data.tp1Percent * 100).toFixed(2)}%)` : '';
+            const tp2PercentText = data.tp2Percent ? `(${(data.tp2Percent * 100).toFixed(2)}%)` : '';
+            const tp3PercentText = data.tp3Percent ? `(${(data.tp3Percent * 100).toFixed(2)}%)` : '';
+
             signalContainer.innerHTML = `
                 <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4">
                     <div>
@@ -629,10 +639,10 @@
                 <div class="bg-gray-800/50 rounded-lg p-4 mb-4">
                     <h3 class="text-lg font-semibold text-white mb-3">Trade Setup</h3>
                     <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
-                        <div class="bg-red-900/50 p-3 rounded-lg"><p class="text-xs text-red-300">Stop Loss</p><p class="font-semibold text-red-300">$${data.stopLoss ? data.stopLoss.toFixed(pricePrecision) : 'N/A'}</p></div>
-                        <div class="bg-green-900/50 p-3 rounded-lg"><p class="text-xs text-green-300">Take Profit 1</p><p class="font-semibold text-green-300">$${data.tp1 ? data.tp1.toFixed(pricePrecision) : 'N/A'}</p></div>
-                        <div class="bg-green-900/50 p-3 rounded-lg"><p class="text-xs text-green-300">Take Profit 2</p><p class="font-semibold text-green-300">$${data.tp2 ? data.tp2.toFixed(pricePrecision) : 'N/A'}</p></div>
-                        <div class="bg-green-900/50 p-3 rounded-lg"><p class="text-xs text-green-300">Take Profit 3</p><p class="font-semibold text-green-300">$${data.tp3 ? data.tp3.toFixed(pricePrecision) : 'N/A'}</p></div>
+                        <div class="bg-red-900/50 p-3 rounded-lg"><p class="text-xs text-red-300">Stop Loss</p><p class="font-semibold text-red-300">$${data.stopLoss ? data.stopLoss.toFixed(pricePrecision) : 'N/A'}</p><p class="text-xs text-red-300">${slPercentText}</p></div>
+                        <div class="bg-green-900/50 p-3 rounded-lg"><p class="text-xs text-green-300">Take Profit 1</p><p class="font-semibold text-green-300">$${data.tp1 ? data.tp1.toFixed(pricePrecision) : 'N/A'}</p><p class="text-xs text-green-300">${tp1PercentText}</p></div>
+                        <div class="bg-green-900/50 p-3 rounded-lg"><p class="text-xs text-green-300">Take Profit 2</p><p class="font-semibold text-green-300">$${data.tp2 ? data.tp2.toFixed(pricePrecision) : 'N/A'}</p><p class="text-xs text-green-300">${tp2PercentText}</p></div>
+                        <div class="bg-green-900/50 p-3 rounded-lg"><p class="text-xs text-green-300">Take Profit 3</p><p class="font-semibold text-green-300">$${data.tp3 ? data.tp3.toFixed(pricePrecision) : 'N/A'}</p><p class="text-xs text-green-300">${tp3PercentText}</p></div>
                     </div>
                     ${data.riskRewardRatio > 0 ? `<p class="text-center text-sm mt-3 text-blue-300">Risk/Reward Ratio (TP1): ~1:${data.riskRewardRatio}</p>` : ''}
                 </div>
