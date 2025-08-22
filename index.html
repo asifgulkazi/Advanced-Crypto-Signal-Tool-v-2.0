@@ -1,4 +1,4 @@
-<!-- Version 3.4 -->
+<!-- Version 3.8 -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -157,6 +157,7 @@
         let btcDominanceChart, fearGreedChart; // Chart instances
         let coinIconMap = {}; // To store symbol -> icon URL mapping
         let currentTimezone = 'local';
+        let marketDataCache = null; // Cache for market data
 
         // --- Timeframe Mappings ---
         const timeframeMappings = {
@@ -184,7 +185,7 @@
         };
         
         // --- Robust Fetch Helper ---
-        async function fetchWithRetry(url, options, retries = 3, delay = 500) {
+        async function fetchWithRetry(url, options, retries = 3, delay = 1000) {
             for (let i = 0; i < retries; i++) {
                 try {
                     const response = await fetch(url, options);
@@ -208,17 +209,20 @@
             const optionsDate = { month: 'short', day: 'numeric' };
             const optionsTime = { hour: '2-digit', minute:'2-digit', hour12: false };
             const optionsFull = { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute:'2-digit' };
+            const optionsFullDate = { year: 'numeric', month: 'short', day: 'numeric' };
 
             if (currentTimezone === 'utc') {
                 optionsDate.timeZone = 'UTC';
                 optionsTime.timeZone = 'UTC';
                 optionsFull.timeZone = 'UTC';
+                optionsFullDate.timeZone = 'UTC';
             }
 
             return {
                 date: date.toLocaleDateString('en-US', optionsDate),
                 time: date.toLocaleTimeString('en-US', optionsTime),
-                full: date.toLocaleString('en-US', optionsFull)
+                full: date.toLocaleString('en-US', optionsFull),
+                fullDate: date.toLocaleDateString('en-US', optionsFullDate)
             };
         }
 
@@ -604,7 +608,7 @@
                         <p class="text-xs text-gray-400">All-Time High</p>
                         <p class="font-semibold text-white">$${data.ath.toLocaleString()}</p>
                         <p class="text-xs font-medium text-red-400">${data.ath_change_percentage.toFixed(2)}%</p>
-                        <p class="text-xs text-gray-500">${formatTimestamp(data.ath_date).date}</p>
+                        <p class="text-xs text-gray-500">${formatTimestamp(data.ath_date).fullDate}</p>
                     </div>
                     <div id="current-price-box" class="bg-gray-800 p-4 rounded-lg price-box text-center">
                         <p class="text-sm text-gray-400">Current Price</p>
@@ -614,7 +618,7 @@
                         <p class="text-xs text-gray-400">All-Time Low</p>
                         <p class="font-semibold text-white">$${data.atl.toLocaleString()}</p>
                         <p class="text-xs font-medium text-green-400">+${data.atl_change_percentage.toFixed(2)}%</p>
-                        <p class="text-xs text-gray-500">${formatTimestamp(data.atl_date).date}</p>
+                        <p class="text-xs text-gray-500">${formatTimestamp(data.atl_date).fullDate}</p>
                     </div>
                 </div>
 
@@ -676,17 +680,21 @@
             let topLosersHtml = `<h3 class="text-xl font-bold text-white mb-4"><i class="fas fa-arrow-down mr-2"></i>Top Losers (24h)</h3><div><table class="w-full compact-table"><thead><tr><th>Coin</th><th>Change</th></tr></thead><tbody>`;
 
             try {
-                const tickersResponse = await fetchWithRetry('https://api.binance.com/api/v3/ticker/24hr');
-                const tickersData = await tickersResponse.json();
-                const usdtTickers = tickersData.filter(m => m.symbol.endsWith('USDT') && !m.symbol.includes('UP') && !m.symbol.includes('DOWN') && parseFloat(m.volume) > 100000);
+                // Use the cached market data if available
+                if (!marketDataCache) {
+                    const marketsResponse = await fetchWithRetry(`https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250&page=1&sparkline=false&price_change_percentage=24h`);
+                    marketDataCache = await marketsResponse.json();
+                }
+                const coingeckoData = marketDataCache;
 
                 // --- 1. Populate Top Coins Analysis ---
                 topCoins.forEach(coinSymbol => {
-                    const ticker = usdtTickers.find(t => t.symbol === coinSymbol);
-                    if (!ticker) return;
+                    const symbol = coinSymbol.replace('USDT','').toLowerCase();
+                    const coinData = coingeckoData.find(c => c.symbol === symbol);
+                    if (!coinData) return;
 
-                    const price = parseFloat(ticker.lastPrice);
-                    const changePercent = parseFloat(ticker.priceChangePercent);
+                    const price = coinData.current_price;
+                    const changePercent = coinData.price_change_percentage_24h;
                     
                     let signal = `<span class="tag tag-neutral">Neutral</span>`;
                     if (changePercent > 2.5) signal = `<span class="tag tag-strong-buy">Strong Buy</span>`;
@@ -699,28 +707,25 @@
                     }
 
                     const pricePrecision = price > 10 ? 2 : 4;
-                    const symbol = ticker.symbol.replace('USDT', '');
-                    const iconUrl = coinIconMap[symbol] || 'https://via.placeholder.com/20';
-                    topCoinsHtml += `<tr><td class="flex items-center gap-2"><img src="${iconUrl}" class="w-5 h-5 rounded-full">${symbol}</td><td>$${price.toFixed(pricePrecision)}</td><td>${signal}</td></tr>`;
+                    topCoinsHtml += `<tr><td class="flex items-center gap-2"><img src="${coinData.image}" class="w-5 h-5 rounded-full">${coinData.symbol.toUpperCase()}</td><td>$${price.toFixed(pricePrecision)}</td><td>${signal}</td></tr>`;
                 });
 
-                // --- 2. Populate Top Movers ---
-                usdtTickers.sort((a, b) => parseFloat(b.priceChangePercent) - parseFloat(a.priceChangePercent));
-                usdtTickers.slice(0, 12).forEach(mover => {
-                    const change = parseFloat(mover.priceChangePercent);
-                    const symbol = mover.symbol.replace('USDT', '');
-                    const iconUrl = coinIconMap[symbol] || 'https://via.placeholder.com/20';
-                    topMoversHtml += `<tr><td class="flex items-center gap-2"><img src="${iconUrl}" class="w-5 h-5 rounded-full">${symbol}</td><td class="text-green-400">${change.toFixed(2)}%</td></tr>`;
+
+                // --- 2. Populate Top Movers & Losers from CoinGecko Data ---
+                const validMovers = coingeckoData.filter(c => c.price_change_percentage_24h !== null && c.market_cap > 1000000);
+
+                validMovers.sort((a, b) => b.price_change_percentage_24h - a.price_change_percentage_24h);
+                validMovers.slice(0, 12).forEach(mover => {
+                    const change = mover.price_change_percentage_24h;
+                    topMoversHtml += `<tr><td class="flex items-center gap-2"><img src="${mover.image}" class="w-5 h-5 rounded-full">${mover.symbol.toUpperCase()}</td><td class="text-green-400">${change.toFixed(2)}%</td></tr>`;
                 });
 
-                // --- 3. Populate Top Losers ---
-                usdtTickers.sort((a, b) => parseFloat(a.priceChangePercent) - parseFloat(b.priceChangePercent));
-                usdtTickers.slice(0, 12).forEach(mover => {
-                    const change = parseFloat(mover.priceChangePercent);
-                    const symbol = mover.symbol.replace('USDT', '');
-                    const iconUrl = coinIconMap[symbol] || 'https://via.placeholder.com/20';
-                    topLosersHtml += `<tr><td class="flex items-center gap-2"><img src="${iconUrl}" class="w-5 h-5 rounded-full">${symbol}</td><td class="text-red-400">${change.toFixed(2)}%</td></tr>`;
+                validMovers.sort((a, b) => a.price_change_percentage_24h - b.price_change_percentage_24h);
+                validMovers.slice(0, 12).forEach(loser => {
+                    const change = loser.price_change_percentage_24h;
+                    topLosersHtml += `<tr><td class="flex items-center gap-2"><img src="${loser.image}" class="w-5 h-5 rounded-full">${loser.symbol.toUpperCase()}</td><td class="text-red-400">${change.toFixed(2)}%</td></tr>`;
                 });
+
 
             } catch (e) {
                 console.error("Error in updateMarketAnalysisTables:", e);
@@ -809,13 +814,14 @@
 
             try {
                 const globalResponse = await fetchWithRetry(`${API_BASE_URL}/global`);
-                const marketsResponse = await fetchWithRetry(`${API_BASE_URL}/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=100&page=1&sparkline=false&price_change_percentage=24h`);
-
+                await new Promise(resolve => setTimeout(resolve, 250)); 
+                const marketsResponse = await fetchWithRetry(`${API_BASE_URL}/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250&page=1&sparkline=false&price_change_percentage=24h`);
+                marketDataCache = await marketsResponse.json();
+                
                 const globalData = await globalResponse.json();
-                const marketsData = await marketsResponse.json();
-
+                
                 coinIconMap = {};
-                marketsData.forEach(coin => {
+                marketDataCache.forEach(coin => {
                     coinIconMap[coin.symbol.toUpperCase()] = coin.image;
                 });
                 
@@ -838,8 +844,8 @@
                 const ethDom = data.market_cap_percentage.eth;
                 const othersDom = 100 - btcDom - ethDom;
                 
-                const btcData = marketsData.find(c => c.id === 'bitcoin');
-                const ethData = marketsData.find(c => c.id === 'ethereum');
+                const btcData = marketDataCache.find(c => c.id === 'bitcoin');
+                const ethData = marketDataCache.find(c => c.id === 'ethereum');
                 
                 const btcChange = btcData ? btcData.price_change_percentage_24h : 0;
                 const ethChange = ethData ? ethData.price_change_percentage_24h : 0;
@@ -848,37 +854,54 @@
                 const btcChangeColor = btcChange >= 0 ? 'text-green-400' : 'text-red-400';
                 const ethChangeColor = ethChange >= 0 ? 'text-green-400' : 'text-red-400';
                 const othersChangeColor = othersChange >= 0 ? 'text-green-400' : 'text-red-400';
+                
+                const btcArrow = btcChange >= 0 ? 'fa-arrow-up' : 'fa-arrow-down';
+                const ethArrow = ethChange >= 0 ? 'fa-arrow-up' : 'fa-arrow-down';
+                const othersArrow = othersChange >= 0 ? 'fa-arrow-up' : 'fa-arrow-down';
 
                 dominanceContainer.innerHTML = `
+                    <div class="flex justify-between items-center text-xs text-gray-500 mb-1">
+                        <span>Coin</span>
+                        <div class="flex items-center text-right">
+                            <span class="w-12">Dom %</span>
+                            <span class="w-20">24H Change</span>
+                        </div>
+                    </div>
                     <div class="flex justify-between items-center">
                         <span class="text-xs font-bold text-amber-500">Bitcoin</span>
-                        <div class="flex items-center gap-2">
-                            <span class="text-xs font-medium ${btcChangeColor}">${btcChange.toFixed(2)}%</span>
-                            <span class="text-sm font-semibold text-white">${btcDom.toFixed(1)}%</span>
+                        <div class="flex items-center">
+                            <span class="text-sm font-semibold text-white w-12 text-right">${btcDom.toFixed(1)}%</span>
+                            <span class="text-xs font-medium ${btcChangeColor} flex items-center justify-end gap-1 w-20">
+                                ${btcChange.toFixed(2)}% <i class="fas ${btcArrow}"></i>
+                            </span>
                         </div>
                     </div>
                     <div class="flex justify-between items-center">
                         <span class="text-xs font-bold text-indigo-400">Ethereum</span>
-                        <div class="flex items-center gap-2">
-                            <span class="text-xs font-medium ${ethChangeColor}">${ethChange.toFixed(2)}%</span>
-                            <span class="text-sm font-semibold text-white">${ethDom.toFixed(1)}%</span>
+                        <div class="flex items-center">
+                            <span class="text-sm font-semibold text-white w-12 text-right">${ethDom.toFixed(1)}%</span>
+                            <span class="text-xs font-medium ${ethChangeColor} flex items-center justify-end gap-1 w-20">
+                                ${ethChange.toFixed(2)}% <i class="fas ${ethArrow}"></i>
+                            </span>
                         </div>
                     </div>
                     <div class="flex justify-between items-center">
                         <span class="text-xs font-bold text-gray-400">Others</span>
-                        <div class="flex items-center gap-2">
-                            <span class="text-xs font-medium ${othersChangeColor}">${othersChange.toFixed(2)}%</span>
-                            <span class="text-sm font-semibold text-white">${othersDom.toFixed(1)}%</span>
+                        <div class="flex items-center">
+                            <span class="text-sm font-semibold text-white w-12 text-right">${othersDom.toFixed(1)}%</span>
+                            <span class="text-xs font-medium ${othersChangeColor} flex items-center justify-end gap-1 w-20">
+                                ${othersChange.toFixed(2)}% <i class="fas ${othersArrow}"></i>
+                            </span>
                         </div>
                     </div>`;
                 dominanceBar.innerHTML = `<div class="bg-amber-500" style="width: ${btcDom}%"></div><div class="bg-indigo-400" style="width: ${ethDom}%"></div><div class="bg-gray-400" style="width: ${othersDom}%"></div>`;
 
                 let advancersCount = 0;
-                marketsData.forEach(coin => {
+                marketDataCache.forEach(coin => {
                     if (coin.price_change_percentage_24h != null && coin.price_change_percentage_24h >= 0) advancersCount++;
                 });
                 advancersEl.textContent = `${advancersCount} Advancers`;
-                declinersEl.textContent = `${marketsData.length - advancersCount} Decliners`;
+                declinersEl.textContent = `${marketDataCache.length - advancersCount} Decliners`;
 
             } catch (e) {
                 console.error("Error updating global dashboard:", e);
