@@ -1,4 +1,4 @@
-<!-- Version 3.8 -->
+<!-- Version 4.0 -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -676,11 +676,10 @@
             const topCoins = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'BNBUSDT', 'DOGEUSDT', 'ADAUSDT', 'AVAXUSDT', 'SHIBUSDT', 'DOTUSDT', 'LINKUSDT', 'MATICUSDT'];
             
             let topCoinsHtml = `<h3 class="text-xl font-bold text-white mb-4"><i class="fas fa-star mr-2"></i>Top Coins Analysis</h3><div><table class="w-full compact-table"><thead><tr><th>Coin</th><th>Price</th><th>Signal</th></tr></thead><tbody>`;
-            let topMoversHtml = `<h3 class="text-xl font-bold text-white mb-4"><i class="fas fa-rocket mr-2"></i>Top Movers (24h)</h3><div><table class="w-full compact-table"><thead><tr><th>Coin</th><th>Change</th></tr></thead><tbody>`;
-            let topLosersHtml = `<h3 class="text-xl font-bold text-white mb-4"><i class="fas fa-arrow-down mr-2"></i>Top Losers (24h)</h3><div><table class="w-full compact-table"><thead><tr><th>Coin</th><th>Change</th></tr></thead><tbody>`;
+            let topMoversHtml = `<h3 class="text-xl font-bold text-white mb-4"><i class="fas fa-rocket mr-2"></i>Top Movers (24h)</h3><div><table class="w-full compact-table"><thead><tr><th>Coin</th><th>Price</th><th>Change</th><th>Signal</th></tr></thead><tbody>`;
+            let topLosersHtml = `<h3 class="text-xl font-bold text-white mb-4"><i class="fas fa-arrow-down mr-2"></i>Top Losers (24h)</h3><div><table class="w-full compact-table"><thead><tr><th>Coin</th><th>Price</th><th>Change</th><th>Signal</th></tr></thead><tbody>`;
 
             try {
-                // Use the cached market data if available
                 if (!marketDataCache) {
                     const marketsResponse = await fetchWithRetry(`https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250&page=1&sparkline=false&price_change_percentage=24h`);
                     marketDataCache = await marketsResponse.json();
@@ -716,23 +715,35 @@
 
                 validMovers.sort((a, b) => b.price_change_percentage_24h - a.price_change_percentage_24h);
                 validMovers.slice(0, 12).forEach(mover => {
+                    const price = mover.current_price;
                     const change = mover.price_change_percentage_24h;
-                    topMoversHtml += `<tr><td class="flex items-center gap-2"><img src="${mover.image}" class="w-5 h-5 rounded-full">${mover.symbol.toUpperCase()}</td><td class="text-green-400">${change.toFixed(2)}%</td></tr>`;
+                    const pricePrecision = price > 10 ? 2 : 5;
+                    let signal = change > 5 ? `<span class="tag tag-strong-buy">Buy</span>` : `<span class="tag tag-long">Hold</span>`;
+                     if (tradeType === 'spot' && (signal.includes('Sell') || signal.includes('short'))) {
+                        signal = `<span class="tag tag-neutral">Neutral</span>`;
+                    }
+                    topMoversHtml += `<tr><td class="flex items-center gap-2"><img src="${mover.image}" class="w-5 h-5 rounded-full">${mover.symbol.toUpperCase()}</td><td>$${price.toFixed(pricePrecision)}</td><td class="text-green-400">${change.toFixed(2)}%</td><td>${signal}</td></tr>`;
                 });
 
                 validMovers.sort((a, b) => a.price_change_percentage_24h - b.price_change_percentage_24h);
                 validMovers.slice(0, 12).forEach(loser => {
+                    const price = loser.current_price;
                     const change = loser.price_change_percentage_24h;
-                    topLosersHtml += `<tr><td class="flex items-center gap-2"><img src="${loser.image}" class="w-5 h-5 rounded-full">${loser.symbol.toUpperCase()}</td><td class="text-red-400">${change.toFixed(2)}%</td></tr>`;
+                    const pricePrecision = price > 10 ? 2 : 5;
+                    let signal = change < -5 ? `<span class="tag tag-strong-sell">Sell</span>` : `<span class="tag tag-short">Hold</span>`;
+                     if (tradeType === 'spot' && (signal.includes('Sell') || signal.includes('short'))) {
+                        signal = `<span class="tag tag-neutral">Neutral</span>`;
+                    }
+                    topLosersHtml += `<tr><td class="flex items-center gap-2"><img src="${loser.image}" class="w-5 h-5 rounded-full">${loser.symbol.toUpperCase()}</td><td>$${price.toFixed(pricePrecision)}</td><td class="text-red-400">${change.toFixed(2)}%</td><td>${signal}</td></tr>`;
                 });
 
 
             } catch (e) {
                 console.error("Error in updateMarketAnalysisTables:", e);
-                const errorRow = `<tr><td colspan="3">Error loading data</td></tr>`;
-                topCoinsHtml += errorRow;
-                topMoversHtml += errorRow.replace('colspan="3"', 'colspan="2"');
-                topLosersHtml += errorRow.replace('colspan="3"', 'colspan="2"');
+                const errorRow = `<tr><td colspan="4">Error loading data</td></tr>`;
+                topCoinsHtml += errorRow.replace('colspan="4"', 'colspan="3"');
+                topMoversHtml += errorRow;
+                topLosersHtml += errorRow;
             }
             
             topCoinsHtml += `</tbody></table></div>`;
@@ -814,9 +825,11 @@
 
             try {
                 const globalResponse = await fetchWithRetry(`${API_BASE_URL}/global`);
-                await new Promise(resolve => setTimeout(resolve, 250)); 
-                const marketsResponse = await fetchWithRetry(`${API_BASE_URL}/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250&page=1&sparkline=false&price_change_percentage=24h`);
-                marketDataCache = await marketsResponse.json();
+                if (!marketDataCache) {
+                    await new Promise(resolve => setTimeout(resolve, 250)); 
+                    const marketsResponse = await fetchWithRetry(`${API_BASE_URL}/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250&page=1&sparkline=false&price_change_percentage=24h`);
+                    marketDataCache = await marketsResponse.json();
+                }
                 
                 const globalData = await globalResponse.json();
                 
@@ -829,7 +842,7 @@
                 marketCapEl.textContent = formatLargeNumber(data.total_market_cap.usd);
                 formatPercentage(data.market_cap_change_percentage_24h_usd, marketCapChangeEl);
                 volume24hEl.textContent = formatLargeNumber(data.total_volume.usd);
-                formatPercentage(null, volumeChangeEl);
+                formatPercentage(data.market_cap_change_percentage_24h_usd, volumeChangeEl);
 
                 const fearGreedValue = fearGreedData;
                 fearGreedValueEl.textContent = fearGreedValue.value;
@@ -861,14 +874,14 @@
 
                 dominanceContainer.innerHTML = `
                     <div class="flex justify-between items-center text-xs text-gray-500 mb-1">
-                        <span>Coin</span>
+                        <span></span>
                         <div class="flex items-center text-right">
-                            <span class="w-12">Dom %</span>
+                            <span class="w-12"></span>
                             <span class="w-20">24H Change</span>
                         </div>
                     </div>
                     <div class="flex justify-between items-center">
-                        <span class="text-xs font-bold text-amber-500">Bitcoin</span>
+                        <span class="text-xs font-bold text-amber-500">BTC</span>
                         <div class="flex items-center">
                             <span class="text-sm font-semibold text-white w-12 text-right">${btcDom.toFixed(1)}%</span>
                             <span class="text-xs font-medium ${btcChangeColor} flex items-center justify-end gap-1 w-20">
@@ -877,7 +890,7 @@
                         </div>
                     </div>
                     <div class="flex justify-between items-center">
-                        <span class="text-xs font-bold text-indigo-400">Ethereum</span>
+                        <span class="text-xs font-bold text-indigo-400">ETH</span>
                         <div class="flex items-center">
                             <span class="text-sm font-semibold text-white w-12 text-right">${ethDom.toFixed(1)}%</span>
                             <span class="text-xs font-medium ${ethChangeColor} flex items-center justify-end gap-1 w-20">
