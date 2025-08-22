@@ -1,4 +1,4 @@
-<!-- Version 2.4 -->
+<!-- Version 2.5 -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -75,8 +75,12 @@
                     <p id="fear-greed-text" class="text-xs font-medium">-</p>
                 </div>
             </div>
-            <div id="trending-coins-container-main" class="bg-gradient-to-br from-gray-800 to-gray-900 p-4 rounded-xl border border-gray-700 flex flex-col justify-between h-28">
-                <!-- Content will be injected by JS -->
+            <div class="bg-gradient-to-br from-gray-800 to-gray-900 p-4 rounded-xl border border-gray-700 flex flex-col justify-center h-28">
+                <h3 class="text-xs font-medium text-gray-400 mb-2">Market Trend (24h)</h3>
+                <div class="space-y-1">
+                    <p id="advancers" class="text-xl font-semibold text-green-400">- Advancers</p>
+                    <p id="decliners" class="text-xl font-semibold text-red-400">- Decliners</p>
+                </div>
             </div>
         </section>
 
@@ -739,7 +743,9 @@
             const fearGreedValueEl = document.getElementById('fear-greed-value');
             const fearGreedTextEl = document.getElementById('fear-greed-text');
             const fearGreedChartCanvas = document.getElementById('fear-greed-chart');
-            const trendingCoinsContainerMain = document.getElementById('trending-coins-container-main');
+            const advancersEl = document.getElementById('advancers');
+            const declinersEl = document.getElementById('decliners');
+
 
             const API_BASE_URL = 'https://api.coingecko.com/api/v3';
             const FEAR_GREED_API_URL = 'https://api.alternative.me/fng/?limit=1';
@@ -760,17 +766,17 @@
             };
 
             try {
-                const [globalResponse, fearGreedResponse, trendingResponse] = await Promise.all([
+                const [globalResponse, fearGreedResponse, marketsResponse] = await Promise.all([
                     fetch(`${API_BASE_URL}/global`),
                     fetch(FEAR_GREED_API_URL),
-                    fetch(`${API_BASE_URL}/search/trending`)
+                    fetch(`${API_BASE_URL}/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=100&page=1&sparkline=false&price_change_percentage=24h`)
                 ]);
 
-                if (!globalResponse.ok || !fearGreedResponse.ok || !trendingResponse.ok) throw new Error('Failed to fetch market data');
+                if (!globalResponse.ok || !fearGreedResponse.ok || !marketsResponse.ok) throw new Error('Failed to fetch market data');
 
                 const globalData = await globalResponse.json();
                 const fearGreedData = await fearGreedResponse.json();
-                const trendingData = await trendingResponse.json();
+                const marketsData = await marketsResponse.json();
                 
                 const data = globalData.data;
                 marketCapEl.textContent = formatLargeNumber(data.total_market_cap.usd);
@@ -798,19 +804,12 @@
                     </div>`;
                 dominanceBar.innerHTML = `<div class="bg-amber-500" style="width: ${btcDom}%"></div><div class="bg-indigo-400" style="width: ${ethDom}%"></div><div class="bg-gray-400" style="width: ${othersDom}%"></div>`;
 
-                const trendingCoins = trendingData.coins.slice(0, 3);
-                let trendingHtml = `<h3 class="text-xs font-medium text-gray-400">Coins Trending Now</h3><div class="space-y-2 text-sm mt-1">`;
-                trendingCoins.forEach(coin => {
-                    trendingHtml += `
-                        <div class="flex items-center justify-between">
-                            <div class="flex items-center gap-2">
-                                <img src="${coin.item.thumb}" class="w-5 h-5 rounded-full">
-                                <span class="font-semibold text-white">${coin.item.symbol}</span>
-                            </div>
-                        </div>`;
+                let advancersCount = 0;
+                marketsData.forEach(coin => {
+                    if (coin.price_change_percentage_24h >= 0) advancersCount++;
                 });
-                trendingHtml += `</div>`;
-                trendingCoinsContainerMain.innerHTML = trendingHtml;
+                advancersEl.textContent = `${advancersCount} Advancers`;
+                declinersEl.textContent = `${100 - advancersCount} Decliners`;
 
             } catch (e) {
                 marketOverview.innerHTML = `<div class="col-span-1 sm:col-span-2 lg:col-span-4 text-red-400 text-sm p-4 text-center">Could not load market dashboard data.</div>`;
