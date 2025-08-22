@@ -1,4 +1,4 @@
-<!-- Version 2.5 -->
+<!-- Version 2.6 -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -146,6 +146,7 @@
         let currentSpotType = 'day';
         let priceSocket = null;
         let btcDominanceChart, fearGreedChart; // Chart instances
+        let coinIconMap = {}; // To store symbol -> icon URL mapping
 
         // --- Timeframe Mappings ---
         const timeframeMappings = {
@@ -173,7 +174,7 @@
         };
 
         // --- Main Signal Generation Function ---
-        async function getSignal(pair, interval, tradeType, spotType) {
+        async function getSignal(pair, interval, tradeType, spotType, fearGreedData) {
             showLoader();
             pair = pair.toUpperCase();
             let headerText = `${pair} | ${interval} | ${tradeType.charAt(0).toUpperCase() + tradeType.slice(1)}`;
@@ -252,7 +253,7 @@
                     tradeLevels = calculatePivotSlAndTpLevels(currentPrice, prevDayHigh, prevDayLow, prevDayClose);
                 }
 
-                const fundamentalAnalysis = generateFundamentalAnalysis(trendDirection);
+                const fundamentalAnalysis = generateFundamentalAnalysis(trendDirection, fearGreedData);
 
                 const signalData = {
                     pair, tradeType: tradeSignal, trendDirection, currentPrice,
@@ -272,11 +273,12 @@
                     ath_change_percentage: coinData.ath_change_percentage,
                     atl: coinData.atl,
                     atl_date: coinData.atl_date,
-                    atl_change_percentage: coinData.atl_change_percentage
+                    atl_change_percentage: coinData.atl_change_percentage,
+                    icon: coinData.image
                 };
 
                 updateUI(signalData);
-                updateHistoryTable(klines, pair);
+                updateHistoryTable(klines, pair, coinData.image);
                 updateMarketAnalysisTables(interval, tradeType);
                 startPriceStream(pair);
 
@@ -405,23 +407,24 @@
             return { volatility: volatility.toFixed(2), volatilityLabel: label, atr };
         }
         
-        function generateFundamentalAnalysis(trend) {
+        function generateFundamentalAnalysis(trend, fearGreedData) {
+            const sentimentText = `Fear & Greed Index is in '${fearGreedData.value_classification}' (${fearGreedData.value}).`;
             if (trend === 'Uptrend') {
                 return {
                     keyDrivers: "Positive sentiment from recent ETF inflows and favorable regulatory news are supporting the price.",
-                    marketSentiment: "Fear & Greed Index is in 'Greed' (72). Retail is accumulating on dips, while institutional interest remains strong.",
+                    marketSentiment: `${sentimentText} Retail is accumulating on dips, while institutional interest remains strong.`,
                     onChainMetrics: "Significant outflows from exchanges to private wallets suggest accumulation. Whale activity shows large buy orders."
                 };
             } else if (trend === 'Downtrend') {
                 return {
                     keyDrivers: "Macro-economic concerns (inflation, interest rates) are creating selling pressure. Negative regulatory rumors are circulating.",
-                    marketSentiment: "Fear & Greed Index is in 'Fear' (31). Retail is panic selling, while institutions are de-risking positions.",
+                    marketSentiment: `${sentimentText} Retail is panic selling, while institutions are de-risking positions.`,
                     onChainMetrics: "Inflows to exchanges are increasing, suggesting holders are preparing to sell. Whale wallets are reducing their positions."
                 };
             } else { // Sideways
                 return {
                     keyDrivers: "Market is waiting for a clear catalyst from the upcoming Fed meeting. ETF flows have been flat for the past week.",
-                    marketSentiment: "Fear & Greed Index is 'Neutral' (51). Both buyers and sellers are hesitant, waiting for a clear direction.",
+                    marketSentiment: `${sentimentText} Both buyers and sellers are hesitant, waiting for a clear direction.`,
                     onChainMetrics: "Exchange balances are stable. Whale activity is low, indicating major players are waiting on the sidelines."
                 };
             }
@@ -466,9 +469,13 @@
             topLosersContainer.innerHTML = `<div class="text-center p-10 text-red-400"><p>Could not load market data.</p></div>`;
             trendingCoinsTableContainer.innerHTML = `<div class="text-center p-10 text-red-400"><p>Could not load trending data.</p></div>`;
         }
-        function handleFetch() {
+        async function handleFetch() {
             const pair = pairInput.value;
-            if(pair) getSignal(pair, currentInterval, currentTradeType, currentSpotType);
+            const fearGreedResponse = await fetch('https://api.alternative.me/fng/?limit=1');
+            const fearGreedData = await fearGreedResponse.json();
+            await updateGlobalDashboard(fearGreedData.data[0]);
+            if(pair) getSignal(pair, currentInterval, currentTradeType, currentSpotType, fearGreedData.data[0]);
+            updateTrendingCoinsTable();
         }
         fetchButton.addEventListener('click', handleFetch);
         refreshButton.addEventListener('click', handleFetch);
@@ -597,10 +604,13 @@
                 </div>`;
         }
 
-        function updateHistoryTable(klines, pair) {
+        function updateHistoryTable(klines, pair, iconUrl) {
             const recentKlines = klines.slice(-12).reverse();
             const pricePrecision = parseFloat(recentKlines[0][4]) > 10 ? 2 : 5;
-            let tableHTML = `<h3 class="text-xl font-bold text-white mb-4"><i class="fas fa-history mr-2"></i>${pair.replace('USDT','')} History</h3>
+            let tableHTML = `<h3 class="text-xl font-bold text-white mb-4 flex items-center gap-2">
+                                <img src="${iconUrl}" class="w-6 h-6 rounded-full">
+                                ${pair.replace('USDT','')} History
+                             </h3>
                              <div>
                                 <table class="w-full compact-table">
                                     <thead><tr><th>Date</th><th>Time</th><th>Price</th><th>Change</th></tr></thead>
@@ -656,7 +666,8 @@
                     }
 
                     const pricePrecision = price > 10 ? 2 : 4;
-                    coinResultsHtml += `<tr><td>${coin.replace('USDT','')}</td><td>$${price.toFixed(pricePrecision)}</td><td>${signal}</td></tr>`;
+                    const iconUrl = coinIconMap[coin.replace('USDT', '')] || '';
+                    coinResultsHtml += `<tr><td class="flex items-center gap-2"><img src="${iconUrl}" class="w-5 h-5 rounded-full">${coin.replace('USDT','')}</td><td>$${price.toFixed(pricePrecision)}</td><td>${signal}</td></tr>`;
                 } catch (e) {
                     coinResultsHtml += `<tr><td>${coin.replace('USDT','')}</td><td colspan="2">Failed</td></tr>`;
                 }
@@ -678,13 +689,17 @@
                     usdtMovers.sort((a, b) => parseFloat(b.priceChangePercent) - parseFloat(a.priceChangePercent));
                     usdtMovers.slice(0, 12).forEach(mover => {
                         const change = parseFloat(mover.priceChangePercent);
-                        topMoversHtml += `<tr><td>${mover.symbol.replace('USDT','')}</td><td class="text-green-400">${change.toFixed(2)}%</td></tr>`;
+                        const symbol = mover.symbol.replace('USDT', '');
+                        const iconUrl = coinIconMap[symbol] || '';
+                        topMoversHtml += `<tr><td class="flex items-center gap-2"><img src="${iconUrl}" class="w-5 h-5 rounded-full">${symbol}</td><td class="text-green-400">${change.toFixed(2)}%</td></tr>`;
                     });
 
                     usdtMovers.sort((a, b) => parseFloat(a.priceChangePercent) - parseFloat(b.priceChangePercent));
                     usdtMovers.slice(0, 12).forEach(mover => {
                         const change = parseFloat(mover.priceChangePercent);
-                        topLosersHtml += `<tr><td>${mover.symbol.replace('USDT','')}</td><td class="text-red-400">${change.toFixed(2)}%</td></tr>`;
+                        const symbol = mover.symbol.replace('USDT', '');
+                        const iconUrl = coinIconMap[symbol] || '';
+                        topLosersHtml += `<tr><td class="flex items-center gap-2"><img src="${iconUrl}" class="w-5 h-5 rounded-full">${symbol}</td><td class="text-red-400">${change.toFixed(2)}%</td></tr>`;
                     });
                 }
             } catch (e) {
@@ -733,7 +748,7 @@
             trendingContainer.innerHTML = trendingHtml;
         }
         
-        async function updateGlobalDashboard() {
+        async function updateGlobalDashboard(fearGreedData) {
             const marketCapEl = document.getElementById('market-cap');
             const marketCapChangeEl = document.getElementById('market-cap-change');
             const volume24hEl = document.getElementById('volume-24h');
@@ -748,7 +763,6 @@
 
 
             const API_BASE_URL = 'https://api.coingecko.com/api/v3';
-            const FEAR_GREED_API_URL = 'https://api.alternative.me/fng/?limit=1';
 
             const formatLargeNumber = (value) => {
                 if (value > 1_000_000_000_000) return `$${(value / 1_000_000_000_000).toFixed(2)} T`;
@@ -766,17 +780,21 @@
             };
 
             try {
-                const [globalResponse, fearGreedResponse, marketsResponse] = await Promise.all([
+                const [globalResponse, marketsResponse] = await Promise.all([
                     fetch(`${API_BASE_URL}/global`),
-                    fetch(FEAR_GREED_API_URL),
                     fetch(`${API_BASE_URL}/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=100&page=1&sparkline=false&price_change_percentage=24h`)
                 ]);
 
-                if (!globalResponse.ok || !fearGreedResponse.ok || !marketsResponse.ok) throw new Error('Failed to fetch market data');
+                if (!globalResponse.ok || !marketsResponse.ok) throw new Error('Failed to fetch market data');
 
                 const globalData = await globalResponse.json();
-                const fearGreedData = await fearGreedResponse.json();
                 const marketsData = await marketsResponse.json();
+
+                // Build the icon map
+                coinIconMap = {}; // Reset map
+                marketsData.forEach(coin => {
+                    coinIconMap[coin.symbol.toUpperCase()] = coin.image;
+                });
                 
                 const data = globalData.data;
                 marketCapEl.textContent = formatLargeNumber(data.total_market_cap.usd);
@@ -784,7 +802,7 @@
                 volume24hEl.textContent = formatLargeNumber(data.total_volume.usd);
                 formatPercentage(5.8, volumeChangeEl); 
 
-                const fearGreedValue = fearGreedData.data[0];
+                const fearGreedValue = fearGreedData;
                 fearGreedValueEl.textContent = fearGreedValue.value;
                 fearGreedTextEl.textContent = fearGreedValue.value_classification;
                 
@@ -816,11 +834,10 @@
             }
         }
 
-        document.addEventListener('DOMContentLoaded', () => {
+        document.addEventListener('DOMContentLoaded', async () => {
             updateTimeframeTabs(currentSpotType);
-            getSignal('BTCUSDT', currentInterval, currentTradeType, currentSpotType);
-            updateGlobalDashboard();
-            updateTrendingCoinsTable();
+            await handleFetch();
+            await updateTrendingCoinsTable();
         });
     </script>
 </body>
