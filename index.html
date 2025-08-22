@@ -1,4 +1,4 @@
-<!-- Version 4.0 -->
+<!-- Version 4.3 - UI Polish -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -70,10 +70,9 @@
                     </div>
                 </div>
             </div>
-            <div class="bg-gradient-to-br from-gray-800 to-gray-900 p-4 rounded-xl border border-gray-700 flex flex-col justify-between h-28">
-                <h3 class="text-xs font-medium text-gray-400">Dominance</h3>
-                <div id="dominance-container" class="space-y-1"></div>
-                <div id="dominance-bar" class="flex w-full h-2 rounded-full overflow-hidden bg-gray-700"></div>
+            <div class="bg-gradient-to-br from-gray-800 to-gray-900 p-4 rounded-xl border border-gray-700 flex flex-col h-28">
+                <div id="dominance-container" class="flex-grow"></div>
+                <div id="dominance-bar" class="flex w-full h-2 rounded-full overflow-hidden bg-gray-700 mt-auto"></div>
             </div>
             <div class="bg-gradient-to-br from-gray-800 to-gray-900 p-4 rounded-xl border border-gray-700 relative h-28">
                 <h3 class="text-xs font-medium text-gray-400 absolute top-4 left-4">Fear & Greed</h3>
@@ -238,17 +237,22 @@
             analysisHeader.textContent = headerText;
 
             try {
-                const coinGeckoId = coinIdMapping[pair];
-                if (!coinGeckoId) throw new Error("Coin not supported for full analysis.");
+                const coinGeckoId = coinIdMapping[pair] || pair.replace('USDT', '').toLowerCase();
+                
+                let coinData;
+                if (marketDataCache) {
+                    coinData = marketDataCache.find(c => c.id === coinGeckoId);
+                }
+                if (!coinData) {
+                    const coinGeckoResponse = await fetchWithRetry(`https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${coinGeckoId}`);
+                    const coinGeckoData = await coinGeckoResponse.json();
+                    coinData = coinGeckoData[0];
+                }
 
-                const [klinesResponse, coinGeckoResponse] = await Promise.all([
-                    fetchWithRetry(`https://api.binance.com/api/v3/klines?symbol=${pair}&interval=${interval}&limit=100`),
-                    fetchWithRetry(`https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${coinGeckoId}`)
-                ]);
+                if (!coinData) throw new Error("Could not retrieve coin market data.");
 
+                const klinesResponse = await fetchWithRetry(`https://api.binance.com/api/v3/klines?symbol=${pair}&interval=${interval}&limit=100`);
                 const klines = await klinesResponse.json();
-                const coinGeckoData = await coinGeckoResponse.json();
-                const coinData = coinGeckoData[0];
                 
                 const lastCandle = klines[klines.length - 1];
                 const currentPrice = parseFloat(lastCandle[4]);
@@ -873,38 +877,37 @@
                 const othersArrow = othersChange >= 0 ? 'fa-arrow-up' : 'fa-arrow-down';
 
                 dominanceContainer.innerHTML = `
-                    <div class="flex justify-between items-center text-xs text-gray-500 mb-1">
-                        <span></span>
-                        <div class="flex items-center text-right">
-                            <span class="w-12"></span>
-                            <span class="w-20">24H Change</span>
-                        </div>
+                    <div class="flex justify-between items-center text-xs text-gray-400 mb-2">
+                        <span>Dominance</span>
+                        <span>24H Change</span>
                     </div>
-                    <div class="flex justify-between items-center">
-                        <span class="text-xs font-bold text-amber-500">BTC</span>
-                        <div class="flex items-center">
-                            <span class="text-sm font-semibold text-white w-12 text-right">${btcDom.toFixed(1)}%</span>
-                            <span class="text-xs font-medium ${btcChangeColor} flex items-center justify-end gap-1 w-20">
-                                ${btcChange.toFixed(2)}% <i class="fas ${btcArrow}"></i>
-                            </span>
+                    <div class="space-y-2">
+                        <div class="flex justify-between items-center">
+                            <span class="text-xs font-bold text-amber-500">BTC</span>
+                            <div class="flex items-center">
+                                <span class="text-sm font-semibold text-white w-16 text-right">${btcDom.toFixed(1)}%</span>
+                                <span class="text-xs font-medium ${btcChangeColor} flex items-center justify-end gap-1 w-16">
+                                    ${btcChange.toFixed(2)}% <i class="fas ${btcArrow}"></i>
+                                </span>
+                            </div>
                         </div>
-                    </div>
-                    <div class="flex justify-between items-center">
-                        <span class="text-xs font-bold text-indigo-400">ETH</span>
-                        <div class="flex items-center">
-                            <span class="text-sm font-semibold text-white w-12 text-right">${ethDom.toFixed(1)}%</span>
-                            <span class="text-xs font-medium ${ethChangeColor} flex items-center justify-end gap-1 w-20">
-                                ${ethChange.toFixed(2)}% <i class="fas ${ethArrow}"></i>
-                            </span>
+                        <div class="flex justify-between items-center">
+                            <span class="text-xs font-bold text-indigo-400">ETH</span>
+                            <div class="flex items-center">
+                                <span class="text-sm font-semibold text-white w-16 text-right">${ethDom.toFixed(1)}%</span>
+                                <span class="text-xs font-medium ${ethChangeColor} flex items-center justify-end gap-1 w-16">
+                                    ${ethChange.toFixed(2)}% <i class="fas ${ethArrow}"></i>
+                                </span>
+                            </div>
                         </div>
-                    </div>
-                    <div class="flex justify-between items-center">
-                        <span class="text-xs font-bold text-gray-400">Others</span>
-                        <div class="flex items-center">
-                            <span class="text-sm font-semibold text-white w-12 text-right">${othersDom.toFixed(1)}%</span>
-                            <span class="text-xs font-medium ${othersChangeColor} flex items-center justify-end gap-1 w-20">
-                                ${othersChange.toFixed(2)}% <i class="fas ${othersArrow}"></i>
-                            </span>
+                        <div class="flex justify-between items-center">
+                            <span class="text-xs font-bold text-gray-400">Others</span>
+                            <div class="flex items-center">
+                                <span class="text-sm font-semibold text-white w-16 text-right">${othersDom.toFixed(1)}%</span>
+                                <span class="text-xs font-medium ${othersChangeColor} flex items-center justify-end gap-1 w-16">
+                                    ${othersChange.toFixed(2)}% <i class="fas ${othersArrow}"></i>
+                                </span>
+                            </div>
                         </div>
                     </div>`;
                 dominanceBar.innerHTML = `<div class="bg-amber-500" style="width: ${btcDom}%"></div><div class="bg-indigo-400" style="width: ${ethDom}%"></div><div class="bg-gray-400" style="width: ${othersDom}%"></div>`;
