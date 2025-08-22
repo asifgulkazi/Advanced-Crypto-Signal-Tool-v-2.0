@@ -1,4 +1,4 @@
-<!-- Version 2.7 -->
+<!-- Version 2.8 -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -250,7 +250,7 @@
                     const prevDayHigh = parseFloat(prevDayCandle[2]);
                     const prevDayLow = parseFloat(prevDayCandle[3]);
                     const prevDayClose = parseFloat(prevDayCandle[4]);
-                    tradeLevels = calculatePivotSlAndTpLevels(currentPrice, prevDayHigh, prevDayLow, prevDayClose);
+                    tradeLevels = calculatePivotSlAndTpLevels(currentPrice, prevDayHigh, prevDayLow, prevDayClose, tradeSignal);
                 }
 
                 const fundamentalAnalysis = generateFundamentalAnalysis(trendDirection, fearGreedData);
@@ -288,7 +288,7 @@
         }
         
         // --- Calculation Helpers ---
-        function calculatePivotSlAndTpLevels(currentPrice, prevDayHigh, prevDayLow, prevDayClose) {
+        function calculatePivotSlAndTpLevels(currentPrice, prevDayHigh, prevDayLow, prevDayClose, signal) {
             const P = (prevDayHigh + prevDayLow + prevDayClose) / 3;
             const S1 = (P * 2) - prevDayHigh;
             const R1 = (P * 2) - prevDayLow;
@@ -305,8 +305,14 @@
             const tp2Percent = (tp2 - currentPrice) / currentPrice;
             const tp3Percent = (tp3 - currentPrice) / currentPrice;
 
-            const risk = currentPrice - stopLoss;
-            const reward = tp1 - currentPrice;
+            let risk, reward;
+            if (signal === 'Long (Buy)') {
+                risk = currentPrice - stopLoss;
+                reward = tp1 - currentPrice;
+            } else { // For Short or Neutral, the risk/reward logic is based on shorting
+                risk = stopLoss - currentPrice;
+                reward = currentPrice - tp1;
+            }
             const riskRewardRatio = (risk > 0 && reward > 0) ? (reward / risk).toFixed(2) : 0;
 
             return { tp1, tp2, tp3, stopLoss, riskRewardRatio, slPercent, tp1Percent, tp2Percent, tp3Percent };
@@ -342,8 +348,14 @@
             const tp2Percent = (tp2 - currentPrice) / currentPrice;
             const tp3Percent = (tp3 - currentPrice) / currentPrice;
             
-            const risk = Math.abs(currentPrice - stopLoss);
-            const reward = Math.abs(tp1 - currentPrice);
+            let risk, reward;
+            if (signal === 'Long (Buy)') {
+                risk = currentPrice - stopLoss;
+                reward = tp1 - currentPrice;
+            } else { // For Short or Neutral
+                risk = stopLoss - currentPrice;
+                reward = currentPrice - tp1;
+            }
             const riskRewardRatio = (risk > 0 && reward > 0) ? (reward / risk).toFixed(2) : 0;
 
             return { tp1, tp2, tp3, stopLoss, riskRewardRatio, slPercent, tp1Percent, tp2Percent, tp3Percent };
