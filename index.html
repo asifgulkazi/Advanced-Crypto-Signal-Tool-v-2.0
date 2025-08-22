@@ -1,4 +1,4 @@
-<!-- Version 2.8 -->
+<!-- Version 3.3 -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -64,7 +64,7 @@
             </div>
             <div class="bg-gradient-to-br from-gray-800 to-gray-900 p-4 rounded-xl border border-gray-700 flex flex-col justify-between h-28">
                 <h3 class="text-xs font-medium text-gray-400">Dominance</h3>
-                <div id="dominance-container" class="space-y-2"></div>
+                <div id="dominance-container" class="space-y-1"></div>
                 <div id="dominance-bar" class="flex w-full h-2 rounded-full overflow-hidden bg-gray-700"></div>
             </div>
             <div class="bg-gradient-to-br from-gray-800 to-gray-900 p-4 rounded-xl border border-gray-700 relative h-28">
@@ -172,6 +172,26 @@
             'LINKUSDT': 'chainlink',
             'MATICUSDT': 'matic-network'
         };
+        
+        // --- Robust Fetch Helper ---
+        async function fetchWithRetry(url, options, retries = 3, delay = 500) {
+            for (let i = 0; i < retries; i++) {
+                try {
+                    const response = await fetch(url, options);
+                    if (response.ok) {
+                        return response;
+                    }
+                    if (response.status >= 400 && response.status < 500) {
+                        throw new Error(`Client Error: ${response.status}`);
+                    }
+                } catch (error) {
+                    if (i === retries - 1) throw error;
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                    delay *= 2;
+                }
+            }
+        }
+
 
         // --- Main Signal Generation Function ---
         async function getSignal(pair, interval, tradeType, spotType, fearGreedData) {
@@ -188,12 +208,9 @@
                 if (!coinGeckoId) throw new Error("Coin not supported for full analysis.");
 
                 const [klinesResponse, coinGeckoResponse] = await Promise.all([
-                    fetch(`https://api.binance.com/api/v3/klines?symbol=${pair}&interval=${interval}&limit=100`),
-                    fetch(`https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${coinGeckoId}`)
+                    fetchWithRetry(`https://api.binance.com/api/v3/klines?symbol=${pair}&interval=${interval}&limit=100`),
+                    fetchWithRetry(`https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${coinGeckoId}`)
                 ]);
-
-                if (!klinesResponse.ok) throw new Error(`Invalid Pair or API Error.`);
-                if (!coinGeckoResponse.ok) throw new Error(`Could not fetch CoinGecko data.`);
 
                 const klines = await klinesResponse.json();
                 const coinGeckoData = await coinGeckoResponse.json();
@@ -208,7 +225,6 @@
                 const previousCandle = klines[klines.length - 2];
                 const prevHigh = parseFloat(previousCandle[2]);
                 const prevLow = parseFloat(previousCandle[3]);
-                const typicalAveragePrice = (prevHigh + prevLow + parseFloat(previousCandle[4])) / 3;
 
                 const rsi = calculateRSI(closePrices);
                 const { volatilityLabel, atr } = calculateVolatility(highPrices, lowPrices, closePrices);
@@ -243,8 +259,7 @@
                     tradeLevels = calculateAtrSlAndTpLevels(currentPrice, atr, tradeSignal);
                 } else {
                     const dailyKlinesUrl = `https://api.binance.com/api/v3/klines?symbol=${pair}&interval=1d&limit=2`;
-                    const dailyKlinesResponse = await fetch(dailyKlinesUrl);
-                    if (!dailyKlinesResponse.ok) throw new Error(`Could not fetch daily data for pivots.`);
+                    const dailyKlinesResponse = await fetchWithRetry(dailyKlinesUrl);
                     const dailyKlines = await dailyKlinesResponse.json();
                     const prevDayCandle = dailyKlines[0];
                     const prevDayHigh = parseFloat(prevDayCandle[2]);
@@ -263,9 +278,6 @@
                     ...tradeLevels,
                     justification,
                     ...fundamentalAnalysis,
-                    maxPrice: prevHigh,
-                    minPrice: prevLow,
-                    avgPrice: typicalAveragePrice,
                     interval,
                     timestamp: new Date(),
                     ath: coinData.ath,
@@ -279,7 +291,7 @@
 
                 updateUI(signalData);
                 updateHistoryTable(klines, pair, coinData.image);
-                updateMarketAnalysisTables(interval, tradeType);
+                updateMarketAnalysisTables(tradeType);
                 startPriceStream(pair);
 
             } catch (error) {
@@ -300,22 +312,17 @@
             const tp2 = R2;
             const tp3 = R3;
 
-            const slPercent = (stopLoss - currentPrice) / currentPrice;
-            const tp1Percent = (tp1 - currentPrice) / currentPrice;
-            const tp2Percent = (tp2 - currentPrice) / currentPrice;
-            const tp3Percent = (tp3 - currentPrice) / currentPrice;
-
             let risk, reward;
-            if (signal === 'Long (Buy)') {
+            if (signal.includes('Long')) {
                 risk = currentPrice - stopLoss;
                 reward = tp1 - currentPrice;
-            } else { // For Short or Neutral, the risk/reward logic is based on shorting
+            } else {
                 risk = stopLoss - currentPrice;
                 reward = currentPrice - tp1;
             }
             const riskRewardRatio = (risk > 0 && reward > 0) ? (reward / risk).toFixed(2) : 0;
 
-            return { tp1, tp2, tp3, stopLoss, riskRewardRatio, slPercent, tp1Percent, tp2Percent, tp3Percent };
+            return { tp1, tp2, tp3, stopLoss, riskRewardRatio };
         }
         
         function calculateAtrSlAndTpLevels(currentPrice, atr, signal) {
@@ -326,39 +333,29 @@
 
             let stopLoss, tp1, tp2, tp3;
 
-            if (signal === 'Long (Buy)') {
+            if (signal.includes('Long')) {
                 stopLoss = currentPrice - (atr * slMultiplier);
                 tp1 = currentPrice + (atr * tp1Multiplier);
                 tp2 = currentPrice + (atr * tp2Multiplier);
                 tp3 = currentPrice + (atr * tp3Multiplier);
-            } else if (signal === 'Short (Sell)') {
+            } else {
                 stopLoss = currentPrice + (atr * slMultiplier);
                 tp1 = currentPrice - (atr * tp1Multiplier);
                 tp2 = currentPrice - (atr * tp2Multiplier);
                 tp3 = currentPrice - (atr * tp3Multiplier);
-            } else { // Neutral, provide potential breakout levels
-                stopLoss = currentPrice - (atr * slMultiplier);
-                tp1 = currentPrice + (atr * tp1Multiplier);
-                tp2 = currentPrice + (atr * tp2Multiplier);
-                tp3 = currentPrice + (atr * tp3Multiplier);
             }
             
-            const slPercent = (stopLoss - currentPrice) / currentPrice;
-            const tp1Percent = (tp1 - currentPrice) / currentPrice;
-            const tp2Percent = (tp2 - currentPrice) / currentPrice;
-            const tp3Percent = (tp3 - currentPrice) / currentPrice;
-            
             let risk, reward;
-            if (signal === 'Long (Buy)') {
+            if (signal.includes('Long')) {
                 risk = currentPrice - stopLoss;
                 reward = tp1 - currentPrice;
-            } else { // For Short or Neutral
+            } else {
                 risk = stopLoss - currentPrice;
                 reward = currentPrice - tp1;
             }
             const riskRewardRatio = (risk > 0 && reward > 0) ? (reward / risk).toFixed(2) : 0;
 
-            return { tp1, tp2, tp3, stopLoss, riskRewardRatio, slPercent, tp1Percent, tp2Percent, tp3Percent };
+            return { tp1, tp2, tp3, stopLoss, riskRewardRatio };
         }
 
         function calculateRSI(prices, period = 14) { 
@@ -482,12 +479,17 @@
             trendingCoinsTableContainer.innerHTML = `<div class="text-center p-10 text-red-400"><p>Could not load trending data.</p></div>`;
         }
         async function handleFetch() {
-            const pair = pairInput.value;
-            const fearGreedResponse = await fetch('https://api.alternative.me/fng/?limit=1');
-            const fearGreedData = await fearGreedResponse.json();
-            await updateGlobalDashboard(fearGreedData.data[0]);
-            if(pair) getSignal(pair, currentInterval, currentTradeType, currentSpotType, fearGreedData.data[0]);
-            updateTrendingCoinsTable();
+            try {
+                const pair = pairInput.value;
+                const fearGreedResponse = await fetchWithRetry('https://api.alternative.me/fng/?limit=1');
+                const fearGreedData = await fearGreedResponse.json();
+                await updateGlobalDashboard(fearGreedData.data[0]);
+                if(pair) getSignal(pair, currentInterval, currentTradeType, currentSpotType, fearGreedData.data[0]);
+                updateTrendingCoinsTable();
+            } catch (error) {
+                console.error("Main fetch handler failed:", error);
+                showError("Could not load initial market data. Please try refreshing.");
+            }
         }
         fetchButton.addEventListener('click', handleFetch);
         refreshButton.addEventListener('click', handleFetch);
@@ -554,11 +556,6 @@
             const pricePrecision = data.currentPrice > 10 ? 2 : 5;
             let tradeTypeClass = data.tradeType.includes('Long') ? 'tag-long' : data.tradeType.includes('Short') ? 'tag-short' : 'tag-neutral';
             
-            const slPercentText = data.stopLoss && data.slPercent ? `(${(data.slPercent * 100).toFixed(2)}%)` : '';
-            const tp1PercentText = data.tp1 && data.tp1Percent ? `(+${(data.tp1Percent * 100).toFixed(2)}%)` : '';
-            const tp2PercentText = data.tp2 && data.tp2Percent ? `(+${(data.tp2Percent * 100).toFixed(2)}%)` : '';
-            const tp3PercentText = data.tp3 && data.tp3Percent ? `(+${(data.tp3Percent * 100).toFixed(2)}%)` : '';
-
             signalContainer.innerHTML = `
                 <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4">
                     <div>
@@ -594,10 +591,10 @@
                 <div class="bg-gray-800/50 rounded-lg p-4 mb-4">
                     <h3 class="text-lg font-semibold text-white mb-3">Trade Setup</h3>
                     <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
-                        <div class="bg-red-900/50 p-3 rounded-lg"><p class="text-xs text-red-300">Stop Loss ${slPercentText}</p><p class="font-semibold text-red-300">$${data.stopLoss ? data.stopLoss.toFixed(pricePrecision) : 'N/A'}</p></div>
-                        <div class="bg-green-900/50 p-3 rounded-lg"><p class="text-xs text-green-300">Take Profit 1 ${tp1PercentText}</p><p class="font-semibold text-green-300">$${data.tp1 ? data.tp1.toFixed(pricePrecision) : 'N/A'}</p></div>
-                        <div class="bg-green-900/50 p-3 rounded-lg"><p class="text-xs text-green-300">Take Profit 2 ${tp2PercentText}</p><p class="font-semibold text-green-300">$${data.tp2 ? data.tp2.toFixed(pricePrecision) : 'N/A'}</p></div>
-                        <div class="bg-green-900/50 p-3 rounded-lg"><p class="text-xs text-green-300">Take Profit 3 ${tp3PercentText}</p><p class="font-semibold text-green-300">$${data.tp3 ? data.tp3.toFixed(pricePrecision) : 'N/A'}</p></div>
+                        <div class="bg-red-900/50 p-3 rounded-lg"><p class="text-xs text-red-300">Stop Loss</p><p class="font-semibold text-red-300">$${data.stopLoss ? data.stopLoss.toFixed(pricePrecision) : 'N/A'}</p></div>
+                        <div class="bg-green-900/50 p-3 rounded-lg"><p class="text-xs text-green-300">Take Profit 1</p><p class="font-semibold text-green-300">$${data.tp1 ? data.tp1.toFixed(pricePrecision) : 'N/A'}</p></div>
+                        <div class="bg-green-900/50 p-3 rounded-lg"><p class="text-xs text-green-300">Take Profit 2</p><p class="font-semibold text-green-300">$${data.tp2 ? data.tp2.toFixed(pricePrecision) : 'N/A'}</p></div>
+                        <div class="bg-green-900/50 p-3 rounded-lg"><p class="text-xs text-green-300">Take Profit 3</p><p class="font-semibold text-green-300">$${data.tp3 ? data.tp3.toFixed(pricePrecision) : 'N/A'}</p></div>
                     </div>
                     ${data.riskRewardRatio > 0 ? `<p class="text-center text-sm mt-3 text-blue-300">Risk/Reward Ratio (TP1): ~1:${data.riskRewardRatio}</p>` : ''}
                 </div>
@@ -642,84 +639,73 @@
             historyContainer.innerHTML = tableHTML;
         }
 
-        async function updateMarketAnalysisTables(interval, tradeType) {
+        async function updateMarketAnalysisTables(tradeType) {
             const topCoins = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'BNBUSDT', 'DOGEUSDT', 'ADAUSDT', 'AVAXUSDT', 'SHIBUSDT', 'DOTUSDT', 'LINKUSDT', 'MATICUSDT'];
             
-            let topCoinsHtml = `<h3 class="text-xl font-bold text-white mb-4"><i class="fas fa-star mr-2"></i>Top Coins Analysis</h3>
-                                <div><table class="w-full compact-table"><thead><tr><th>Coin</th><th>Price</th><th>Signal</th></tr></thead><tbody>`;
-            let coinResultsHtml = '';
-            for (const coin of topCoins) {
-                try {
-                    const klinesUrl = `https://api.binance.com/api/v3/klines?symbol=${coin}&interval=${interval}&limit=50`;
-                    const tickerUrl = `https://api.binance.com/api/v3/ticker/price?symbol=${coin}`;
-                    const [klinesRes, tickerRes] = await Promise.all([fetch(klinesUrl), fetch(tickerUrl)]);
-                    
-                    if (!klinesRes.ok || !tickerRes.ok) {
-                        coinResultsHtml += `<tr><td>${coin.replace('USDT','')}</td><td colspan="2">Error</td></tr>`;
-                        continue;
-                    }
-                    
-                    const klines = await klinesRes.json();
-                    const ticker = await tickerRes.json();
-                    const price = parseFloat(ticker.price);
-                    const closePrices = klines.map(k => parseFloat(k[4]));
-                    const rsi = calculateRSI(closePrices);
-                    const sma9 = calculateSMA(closePrices, 9);
-                    const sma21 = calculateSMA(closePrices, 21);
+            let topCoinsHtml = `<h3 class="text-xl font-bold text-white mb-4"><i class="fas fa-star mr-2"></i>Top Coins Analysis</h3><div><table class="w-full compact-table"><thead><tr><th>Coin</th><th>Price</th><th>Signal</th></tr></thead><tbody>`;
+            let topMoversHtml = `<h3 class="text-xl font-bold text-white mb-4"><i class="fas fa-rocket mr-2"></i>Top Movers (24h)</h3><div><table class="w-full compact-table"><thead><tr><th>Coin</th><th>Change</th></tr></thead><tbody>`;
+            let topLosersHtml = `<h3 class="text-xl font-bold text-white mb-4"><i class="fas fa-arrow-down mr-2"></i>Top Losers (24h)</h3><div><table class="w-full compact-table"><thead><tr><th>Coin</th><th>Change</th></tr></thead><tbody>`;
 
+            try {
+                const tickersResponse = await fetchWithRetry('https://api.binance.com/api/v3/ticker/24hr');
+                const tickersData = await tickersResponse.json();
+                const usdtTickers = tickersData.filter(m => m.symbol.endsWith('USDT') && !m.symbol.includes('UP') && !m.symbol.includes('DOWN') && parseFloat(m.volume) > 100000);
+
+                // --- 1. Populate Top Coins Analysis ---
+                topCoins.forEach(coinSymbol => {
+                    const ticker = usdtTickers.find(t => t.symbol === coinSymbol);
+                    if (!ticker) return;
+
+                    const price = parseFloat(ticker.lastPrice);
+                    const changePercent = parseFloat(ticker.priceChangePercent);
+                    
                     let signal = `<span class="tag tag-neutral">Neutral</span>`;
-                    if (rsi < 30 && sma9 > sma21) signal = `<span class="tag tag-strong-buy">Strong Buy</span>`;
-                    else if (rsi > 70 && sma9 < sma21) signal = `<span class="tag tag-strong-sell">Strong Sell</span>`;
-                    else if (sma9 > sma21) signal = `<span class="tag tag-long">Buy</span>`;
-                    else if (sma9 < sma21) signal = `<span class="tag tag-short">Sell</span>`;
+                    if (changePercent > 2.5) signal = `<span class="tag tag-strong-buy">Strong Buy</span>`;
+                    else if (changePercent < -2.5) signal = `<span class="tag tag-strong-sell">Strong Sell</span>`;
+                    else if (changePercent > 1) signal = `<span class="tag tag-long">Buy</span>`;
+                    else if (changePercent < -1) signal = `<span class="tag tag-short">Sell</span>`;
                     
                     if (tradeType === 'spot' && (signal.includes('Sell') || signal.includes('short'))) {
                         signal = `<span class="tag tag-neutral">Neutral</span>`;
                     }
 
                     const pricePrecision = price > 10 ? 2 : 4;
-                    const iconUrl = coinIconMap[coin.replace('USDT', '')] || '';
-                    coinResultsHtml += `<tr><td class="flex items-center gap-2"><img src="${iconUrl}" class="w-5 h-5 rounded-full">${coin.replace('USDT','')}</td><td>$${price.toFixed(pricePrecision)}</td><td>${signal}</td></tr>`;
-                } catch (e) {
-                    coinResultsHtml += `<tr><td>${coin.replace('USDT','')}</td><td colspan="2">Failed</td></tr>`;
-                }
-                await new Promise(resolve => setTimeout(resolve, 100));
-            }
-            topCoinsHtml += coinResultsHtml + `</tbody></table></div>`;
-            topCoinsContainer.innerHTML = topCoinsHtml;
+                    const symbol = ticker.symbol.replace('USDT', '');
+                    const iconUrl = coinIconMap[symbol] || 'https://via.placeholder.com/20';
+                    topCoinsHtml += `<tr><td class="flex items-center gap-2"><img src="${iconUrl}" class="w-5 h-5 rounded-full">${symbol}</td><td>$${price.toFixed(pricePrecision)}</td><td>${signal}</td></tr>`;
+                });
 
-            let topMoversHtml = `<h3 class="text-xl font-bold text-white mb-4"><i class="fas fa-rocket mr-2"></i>Top Movers (24h)</h3>
-                                 <div><table class="w-full compact-table"><thead><tr><th>Coin</th><th>Change</th></tr></thead><tbody>`;
-            let topLosersHtml = `<h3 class="text-xl font-bold text-white mb-4"><i class="fas fa-arrow-down mr-2"></i>Top Losers (24h)</h3>
-                                 <div><table class="w-full compact-table"><thead><tr><th>Coin</th><th>Change</th></tr></thead><tbody>`;
-            try {
-                const moversRes = await fetch('https://api.binance.com/api/v3/ticker/24hr');
-                if (moversRes.ok) {
-                    const moversData = await moversRes.json();
-                    const usdtMovers = moversData.filter(m => m.symbol.endsWith('USDT') && !m.symbol.includes('UP') && !m.symbol.includes('DOWN') && parseFloat(m.volume) > 100000);
-                    
-                    usdtMovers.sort((a, b) => parseFloat(b.priceChangePercent) - parseFloat(a.priceChangePercent));
-                    usdtMovers.slice(0, 12).forEach(mover => {
-                        const change = parseFloat(mover.priceChangePercent);
-                        const symbol = mover.symbol.replace('USDT', '');
-                        const iconUrl = coinIconMap[symbol] || '';
-                        topMoversHtml += `<tr><td class="flex items-center gap-2"><img src="${iconUrl}" class="w-5 h-5 rounded-full">${symbol}</td><td class="text-green-400">${change.toFixed(2)}%</td></tr>`;
-                    });
+                // --- 2. Populate Top Movers ---
+                usdtTickers.sort((a, b) => parseFloat(b.priceChangePercent) - parseFloat(a.priceChangePercent));
+                usdtTickers.slice(0, 12).forEach(mover => {
+                    const change = parseFloat(mover.priceChangePercent);
+                    const symbol = mover.symbol.replace('USDT', '');
+                    const iconUrl = coinIconMap[symbol] || 'https://via.placeholder.com/20';
+                    topMoversHtml += `<tr><td class="flex items-center gap-2"><img src="${iconUrl}" class="w-5 h-5 rounded-full">${symbol}</td><td class="text-green-400">${change.toFixed(2)}%</td></tr>`;
+                });
 
-                    usdtMovers.sort((a, b) => parseFloat(a.priceChangePercent) - parseFloat(b.priceChangePercent));
-                    usdtMovers.slice(0, 12).forEach(mover => {
-                        const change = parseFloat(mover.priceChangePercent);
-                        const symbol = mover.symbol.replace('USDT', '');
-                        const iconUrl = coinIconMap[symbol] || '';
-                        topLosersHtml += `<tr><td class="flex items-center gap-2"><img src="${iconUrl}" class="w-5 h-5 rounded-full">${symbol}</td><td class="text-red-400">${change.toFixed(2)}%</td></tr>`;
-                    });
-                }
+                // --- 3. Populate Top Losers ---
+                usdtTickers.sort((a, b) => parseFloat(a.priceChangePercent) - parseFloat(b.priceChangePercent));
+                usdtTickers.slice(0, 12).forEach(mover => {
+                    const change = parseFloat(mover.priceChangePercent);
+                    const symbol = mover.symbol.replace('USDT', '');
+                    const iconUrl = coinIconMap[symbol] || 'https://via.placeholder.com/20';
+                    topLosersHtml += `<tr><td class="flex items-center gap-2"><img src="${iconUrl}" class="w-5 h-5 rounded-full">${symbol}</td><td class="text-red-400">${change.toFixed(2)}%</td></tr>`;
+                });
+
             } catch (e) {
-                topMoversHtml += `<tr><td colspan="2">Error</td></tr>`;
-                topLosersHtml += `<tr><td colspan="2">Error</td></tr>`;
+                console.error("Error in updateMarketAnalysisTables:", e);
+                const errorRow = `<tr><td colspan="3">Error loading data</td></tr>`;
+                topCoinsHtml += errorRow;
+                topMoversHtml += errorRow.replace('colspan="3"', 'colspan="2"');
+                topLosersHtml += errorRow.replace('colspan="3"', 'colspan="2"');
             }
+            
+            topCoinsHtml += `</tbody></table></div>`;
             topMoversHtml += `</tbody></table></div>`;
             topLosersHtml += `</tbody></table></div>`;
+
+            topCoinsContainer.innerHTML = topCoinsHtml;
             topMoversContainer.innerHTML = topMoversHtml;
             topLosersContainer.innerHTML = topLosersHtml;
         }
@@ -729,11 +715,11 @@
             let trendingHtml = `<h3 class="text-xl font-bold text-white mb-4"><i class="fas fa-fire mr-2"></i>Trending Coins</h3>
                                 <div><table class="w-full compact-table"><thead><tr><th>Coin</th><th>Price</th><th>24h %</th><th>Signal</th></tr></thead><tbody>`;
             try {
-                const trendingRes = await fetch('https://api.coingecko.com/api/v3/search/trending');
+                const trendingRes = await fetchWithRetry('https://api.coingecko.com/api/v3/search/trending');
                 const trendingData = await trendingRes.json();
                 const coinIds = trendingData.coins.map(c => c.item.id).join(',');
 
-                const marketsRes = await fetch(`https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${coinIds}&order=market_cap_desc&per_page=7&page=1&sparkline=false&price_change_percentage=24h`);
+                const marketsRes = await fetchWithRetry(`https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${coinIds}&order=market_cap_desc&per_page=7&page=1&sparkline=false&price_change_percentage=24h`);
                 const marketsData = await marketsRes.json();
 
                 marketsData.forEach(coin => {
@@ -777,13 +763,14 @@
             const API_BASE_URL = 'https://api.coingecko.com/api/v3';
 
             const formatLargeNumber = (value) => {
+                if (!value) return '-';
                 if (value > 1_000_000_000_000) return `$${(value / 1_000_000_000_000).toFixed(2)} T`;
                 if (value > 1_000_000_000) return `$${(value / 1_000_000_000).toFixed(2)} B`;
                 return `$${(value / 1_000_000).toFixed(2)} M`;
             };
 
             const formatPercentage = (value, element) => {
-                if (value === null || isNaN(value)) {
+                if (value === null || typeof value === 'undefined' || isNaN(value)) {
                     element.textContent = 'N/A';
                     return;
                 };
@@ -792,18 +779,13 @@
             };
 
             try {
-                const [globalResponse, marketsResponse] = await Promise.all([
-                    fetch(`${API_BASE_URL}/global`),
-                    fetch(`${API_BASE_URL}/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=100&page=1&sparkline=false&price_change_percentage=24h`)
-                ]);
-
-                if (!globalResponse.ok || !marketsResponse.ok) throw new Error('Failed to fetch market data');
+                const globalResponse = await fetchWithRetry(`${API_BASE_URL}/global`);
+                const marketsResponse = await fetchWithRetry(`${API_BASE_URL}/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=100&page=1&sparkline=false&price_change_percentage=24h`);
 
                 const globalData = await globalResponse.json();
                 const marketsData = await marketsResponse.json();
 
-                // Build the icon map
-                coinIconMap = {}; // Reset map
+                coinIconMap = {};
                 marketsData.forEach(coin => {
                     coinIconMap[coin.symbol.toUpperCase()] = coin.image;
                 });
@@ -812,7 +794,7 @@
                 marketCapEl.textContent = formatLargeNumber(data.total_market_cap.usd);
                 formatPercentage(data.market_cap_change_percentage_24h_usd, marketCapChangeEl);
                 volume24hEl.textContent = formatLargeNumber(data.total_volume.usd);
-                formatPercentage(5.8, volumeChangeEl); 
+                formatPercentage(null, volumeChangeEl);
 
                 const fearGreedValue = fearGreedData;
                 fearGreedValueEl.textContent = fearGreedValue.value;
@@ -826,22 +808,51 @@
                 const btcDom = data.market_cap_percentage.btc;
                 const ethDom = data.market_cap_percentage.eth;
                 const othersDom = 100 - btcDom - ethDom;
+                
+                const btcData = marketsData.find(c => c.id === 'bitcoin');
+                const ethData = marketsData.find(c => c.id === 'ethereum');
+                
+                const btcChange = btcData ? btcData.price_change_percentage_24h : 0;
+                const ethChange = ethData ? ethData.price_change_percentage_24h : 0;
+                const othersChange = data.market_cap_change_percentage_24h_usd;
+
+                const btcChangeColor = btcChange >= 0 ? 'text-green-400' : 'text-red-400';
+                const ethChangeColor = ethChange >= 0 ? 'text-green-400' : 'text-red-400';
+                const othersChangeColor = othersChange >= 0 ? 'text-green-400' : 'text-red-400';
+
                 dominanceContainer.innerHTML = `
-                    <div class="space-y-2">
-                        <div class="flex justify-between items-center"><span class="text-xs font-bold text-amber-500">Bitcoin</span><span class="text-sm font-semibold text-white">${btcDom.toFixed(1)}%</span></div>
-                        <div class="flex justify-between items-center"><span class="text-xs font-bold text-indigo-400">Ethereum</span><span class="text-sm font-semibold text-white">${ethDom.toFixed(1)}%</span></div>
-                        <div class="flex justify-between items-center"><span class="text-xs font-bold text-gray-400">Others</span><span class="text-sm font-semibold text-white">${othersDom.toFixed(1)}%</span></div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-xs font-bold text-amber-500">Bitcoin</span>
+                        <div class="flex items-center gap-2">
+                            <span class="text-xs font-medium ${btcChangeColor}">${btcChange.toFixed(2)}%</span>
+                            <span class="text-sm font-semibold text-white">${btcDom.toFixed(1)}%</span>
+                        </div>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-xs font-bold text-indigo-400">Ethereum</span>
+                        <div class="flex items-center gap-2">
+                            <span class="text-xs font-medium ${ethChangeColor}">${ethChange.toFixed(2)}%</span>
+                            <span class="text-sm font-semibold text-white">${ethDom.toFixed(1)}%</span>
+                        </div>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-xs font-bold text-gray-400">Others</span>
+                        <div class="flex items-center gap-2">
+                            <span class="text-xs font-medium ${othersChangeColor}">${othersChange.toFixed(2)}%</span>
+                            <span class="text-sm font-semibold text-white">${othersDom.toFixed(1)}%</span>
+                        </div>
                     </div>`;
                 dominanceBar.innerHTML = `<div class="bg-amber-500" style="width: ${btcDom}%"></div><div class="bg-indigo-400" style="width: ${ethDom}%"></div><div class="bg-gray-400" style="width: ${othersDom}%"></div>`;
 
                 let advancersCount = 0;
                 marketsData.forEach(coin => {
-                    if (coin.price_change_percentage_24h >= 0) advancersCount++;
+                    if (coin.price_change_percentage_24h != null && coin.price_change_percentage_24h >= 0) advancersCount++;
                 });
                 advancersEl.textContent = `${advancersCount} Advancers`;
-                declinersEl.textContent = `${100 - advancersCount} Decliners`;
+                declinersEl.textContent = `${marketsData.length - advancersCount} Decliners`;
 
             } catch (e) {
+                console.error("Error updating global dashboard:", e);
                 marketOverview.innerHTML = `<div class="col-span-1 sm:col-span-2 lg:col-span-4 text-red-400 text-sm p-4 text-center">Could not load market dashboard data.</div>`;
             }
         }
@@ -849,7 +860,6 @@
         document.addEventListener('DOMContentLoaded', async () => {
             updateTimeframeTabs(currentSpotType);
             await handleFetch();
-            await updateTrendingCoinsTable();
         });
     </script>
 </body>
