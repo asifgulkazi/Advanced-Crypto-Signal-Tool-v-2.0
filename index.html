@@ -1,4 +1,4 @@
-<!-- Version 3.3 -->
+<!-- Version 3.4 -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -39,9 +39,17 @@
 </head>
 <body class="p-4 sm:p-6 md:p-8">
     <div class="max-w-7xl mx-auto">
-        <header class="text-center mb-4">
+        <header class="text-center mb-4 relative">
             <h1 class="text-3xl sm:text-4xl font-bold text-white">Advanced Crypto Signal Tool</h1>
             <p id="analysis-header" class="text-gray-400 mt-2">Real-Time Analysis from Binance</p>
+            <div class="absolute top-0 right-0 sm:top-4 sm:right-4 flex items-center space-x-2 text-xs text-gray-400">
+                <span>Local</span>
+                <label for="timezone-toggle" class="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" value="" id="timezone-toggle" class="sr-only peer">
+                    <div class="w-9 h-5 bg-gray-600 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+                </label>
+                <span>UTC</span>
+            </div>
         </header>
 
         <!-- Overall Market Picture Dashboard -->
@@ -139,6 +147,7 @@
         const spotSubTypeTabsContainer = document.getElementById('spot-sub-type-tabs');
         const analysisHeader = document.getElementById('analysis-header');
         const marketOverview = document.getElementById('market-overview');
+        const timezoneToggle = document.getElementById('timezone-toggle');
 
         // --- State ---
         let currentInterval = '1h';
@@ -147,6 +156,7 @@
         let priceSocket = null;
         let btcDominanceChart, fearGreedChart; // Chart instances
         let coinIconMap = {}; // To store symbol -> icon URL mapping
+        let currentTimezone = 'local';
 
         // --- Timeframe Mappings ---
         const timeframeMappings = {
@@ -191,6 +201,26 @@
                 }
             }
         }
+        
+        // --- Time Formatting Helper ---
+        function formatTimestamp(timestamp) {
+            const date = new Date(timestamp);
+            const optionsDate = { month: 'short', day: 'numeric' };
+            const optionsTime = { hour: '2-digit', minute:'2-digit', hour12: false };
+            const optionsFull = { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute:'2-digit' };
+
+            if (currentTimezone === 'utc') {
+                optionsDate.timeZone = 'UTC';
+                optionsTime.timeZone = 'UTC';
+                optionsFull.timeZone = 'UTC';
+            }
+
+            return {
+                date: date.toLocaleDateString('en-US', optionsDate),
+                time: date.toLocaleTimeString('en-US', optionsTime),
+                full: date.toLocaleString('en-US', optionsFull)
+            };
+        }
 
 
         // --- Main Signal Generation Function ---
@@ -222,10 +252,6 @@
                 const highPrices = klines.map(k => parseFloat(k[2]));
                 const lowPrices = klines.map(k => parseFloat(k[3]));
                 
-                const previousCandle = klines[klines.length - 2];
-                const prevHigh = parseFloat(previousCandle[2]);
-                const prevLow = parseFloat(previousCandle[3]);
-
                 const rsi = calculateRSI(closePrices);
                 const { volatilityLabel, atr } = calculateVolatility(highPrices, lowPrices, closePrices);
                 const sma20 = calculateSMA(closePrices, 20);
@@ -550,6 +576,10 @@
                 handleFetch();
             }
         });
+        timezoneToggle.addEventListener('change', () => {
+            currentTimezone = timezoneToggle.checked ? 'utc' : 'local';
+            handleFetch();
+        });
         
         // --- UI Update Functions ---
         function updateUI(data) {
@@ -560,7 +590,7 @@
                 <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4">
                     <div>
                         <h2 class="text-2xl font-bold text-white">${data.pair} Signal</h2>
-                        <p class="text-gray-400 text-sm mt-1">Last Analysis: ${data.timestamp.toLocaleTimeString()}</p>
+                        <p class="text-gray-400 text-sm mt-1">Last Analysis: ${formatTimestamp(data.timestamp).full}</p>
                     </div>
                     <div class="flex space-x-2 mt-3 sm:mt-0">
                         <span class="tag ${tradeTypeClass}">${data.tradeType}</span>
@@ -574,7 +604,7 @@
                         <p class="text-xs text-gray-400">All-Time High</p>
                         <p class="font-semibold text-white">$${data.ath.toLocaleString()}</p>
                         <p class="text-xs font-medium text-red-400">${data.ath_change_percentage.toFixed(2)}%</p>
-                        <p class="text-xs text-gray-500">${new Date(data.ath_date).toLocaleDateString()}</p>
+                        <p class="text-xs text-gray-500">${formatTimestamp(data.ath_date).date}</p>
                     </div>
                     <div id="current-price-box" class="bg-gray-800 p-4 rounded-lg price-box text-center">
                         <p class="text-sm text-gray-400">Current Price</p>
@@ -584,7 +614,7 @@
                         <p class="text-xs text-gray-400">All-Time Low</p>
                         <p class="font-semibold text-white">$${data.atl.toLocaleString()}</p>
                         <p class="text-xs font-medium text-green-400">+${data.atl_change_percentage.toFixed(2)}%</p>
-                        <p class="text-xs text-gray-500">${new Date(data.atl_date).toLocaleDateString()}</p>
+                        <p class="text-xs text-gray-500">${formatTimestamp(data.atl_date).date}</p>
                     </div>
                 </div>
 
@@ -627,13 +657,12 @@
             for (let i = 0; i < recentKlines.length - 1; i++) {
                 const kline = recentKlines[i];
                 const prevKline = recentKlines[i+1];
-                const date = new Date(kline[0]).toLocaleDateString([], { month: 'short', day: 'numeric' });
-                const time = new Date(kline[0]).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+                const formatted = formatTimestamp(kline[0]);
                 const price = parseFloat(kline[4]).toFixed(pricePrecision);
                 const prevPrice = parseFloat(prevKline[4]);
                 const change = ((price - prevPrice) / prevPrice * 100).toFixed(2);
                 const changeColor = change >= 0 ? 'text-green-400' : 'text-red-400';
-                tableHTML += `<tr><td>${date}</td><td>${time}</td><td>$${price}</td><td class="${changeColor}">${change}%</td></tr>`;
+                tableHTML += `<tr><td>${formatted.date}</td><td>${formatted.time}</td><td>$${price}</td><td class="${changeColor}">${change}%</td></tr>`;
             }
             tableHTML += `</tbody></table></div>`;
             historyContainer.innerHTML = tableHTML;
